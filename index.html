@@ -527,6 +527,32 @@ body.dark .modal select { background: #0f3460; border-color: #2a2a4a; color: #e0
 .modal-row { display: flex; gap: 10px; }
 .modal-row > div { flex: 1; }
 .modal-actions { display: flex; gap: 8px; margin-top: 4px; }
+.modal-tentative-row { display: flex; align-items: center; gap: 10px; }
+.modal-tentative-row label { margin-bottom: 0; font-size: 13px; font-weight: 500; color: #1a1a1a; cursor: pointer; }
+body.dark .modal-tentative-row label { color: #e0e0e0; }
+/* toggle switch */
+.toggle-switch { position: relative; display: inline-block; width: 36px; height: 20px; flex-shrink: 0; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-track {
+  position: absolute; inset: 0; background: #ccc; border-radius: 20px; cursor: pointer; transition: background 0.2s;
+}
+.toggle-track::before {
+  content: ''; position: absolute; width: 14px; height: 14px; left: 3px; top: 3px;
+  background: #fff; border-radius: 50%; transition: transform 0.2s;
+}
+.toggle-switch input:checked + .toggle-track { background: #f4a800; }
+.toggle-switch input:checked + .toggle-track::before { transform: translateX(16px); }
+/* tentative event styling — diagonal stripe overlay */
+.event.tentative {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 4px,
+    rgba(255,255,255,0.35) 4px,
+    rgba(255,255,255,0.35) 8px
+  ) !important;
+  opacity: 0.75;
+}
 .btn-save {
   flex: 1; padding: 8px; border: none; border-radius: 6px;
   background: #1a73e8; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
@@ -750,6 +776,13 @@ body.dark .settings-row { border-bottom-color: #2a2a3a; }
     <div>
       <label>Description</label>
       <textarea id="modal-evt-desc" placeholder="Description (optional)"></textarea>
+    </div>
+    <div class="modal-tentative-row">
+      <label class="toggle-switch">
+        <input type="checkbox" id="modal-evt-tentative">
+        <span class="toggle-track"></span>
+      </label>
+      <label for="modal-evt-tentative">Tentative</label>
     </div>
     <div class="modal-actions">
       <button class="btn-save" id="modal-save-btn">Save</button>
@@ -1000,14 +1033,18 @@ async function fetchEvents(calId, timeMin, timeMax) {
       const start = ev.start?.dateTime || ev.start?.date;
       const end   = ev.end?.dateTime   || ev.end?.date;
       if (!start) continue;
+      const rawDesc = ev.description || '';
+      const isTentative = /^Tentative$/im.test(rawDesc);
+      const cleanDesc = rawDesc.replace(/^Tentative\s*\n?/im, '').trim();
       events.push({
-        id:       ev.id,
+        id:          ev.id,
         calId,
-        title:    ev.summary || '(No title)',
-        start:    new Date(start),
-        end:      new Date(end),
-        desc:     ev.description || '',
-        location: ev.location || '',
+        title:       ev.summary || '(No title)',
+        start:       new Date(start),
+        end:         new Date(end),
+        desc:        cleanDesc,
+        location:    ev.location || '',
+        isTentative,
       });
     }
     pageToken = data.nextPageToken || '';
@@ -1308,12 +1345,13 @@ function renderGrid() {
         const top    = Math.max(0, startMins * pxPerMin);
         const height = Math.max(20, (endMins - startMins) * pxPerMin - 2);
 
-        const evEl = el('div', 'event');
+        const evEl = el('div', ev.isTentative ? 'event tentative' : 'event');
         evEl.style.top             = top + 'px';
         evEl.style.height          = height + 'px';
         evEl.style.background      = color + '22';
         evEl.style.color           = color;
         evEl.style.borderLeftColor = color;
+        if (ev.isTentative) evEl.style.borderLeftStyle = 'dashed';
 
         const g = 2, pct = 100 / numCols;
         evEl.style.left  = `calc(${col * pct}% + ${g}px)`;
@@ -1520,8 +1558,9 @@ function openEditModal(ev) {
   document.getElementById('modal-evt-title').value    = ev.title === '(No title)' ? '' : ev.title;
   document.getElementById('modal-evt-start').value   = toLocalDatetimeValue(ev.start);
   document.getElementById('modal-evt-end').value     = toLocalDatetimeValue(ev.end);
-  document.getElementById('modal-evt-location').value = ev.location || '';
-  document.getElementById('modal-evt-desc').value    = ev.desc || '';
+  document.getElementById('modal-evt-location').value   = ev.location || '';
+  document.getElementById('modal-evt-desc').value       = ev.desc || '';
+  document.getElementById('modal-evt-tentative').checked = !!ev.isTentative;
   document.getElementById('modal-delete-btn').style.display = permissions.delete ? '' : 'none';
   populateCalSelect(ev.calId);
   document.getElementById('modal-backdrop').classList.add('open');
@@ -1534,8 +1573,9 @@ function openCreateModal(calId, startDate, endDate) {
   document.getElementById('modal-evt-title').value    = '';
   document.getElementById('modal-evt-start').value   = toLocalDatetimeValue(startDate);
   document.getElementById('modal-evt-end').value     = toLocalDatetimeValue(endDate);
-  document.getElementById('modal-evt-location').value = '';
-  document.getElementById('modal-evt-desc').value    = '';
+  document.getElementById('modal-evt-location').value   = '';
+  document.getElementById('modal-evt-desc').value       = '';
+  document.getElementById('modal-evt-tentative').checked = false;
   document.getElementById('modal-delete-btn').style.display = 'none';
   populateCalSelect(calId);
   document.getElementById('modal-backdrop').classList.add('open');
@@ -1551,9 +1591,10 @@ async function saveModal() {
   const title    = document.getElementById('modal-evt-title').value.trim() || '(No title)';
   const startVal = document.getElementById('modal-evt-start').value;
   const endVal   = document.getElementById('modal-evt-end').value;
-  const location = document.getElementById('modal-evt-location').value.trim();
-  const desc     = document.getElementById('modal-evt-desc').value.trim();
-  const calId    = document.getElementById('modal-evt-cal').value;
+  const location   = document.getElementById('modal-evt-location').value.trim();
+  const desc       = document.getElementById('modal-evt-desc').value.trim();
+  const isTentative = document.getElementById('modal-evt-tentative').checked;
+  const calId      = document.getElementById('modal-evt-cal').value;
 
   if (!startVal || !endVal) { alert('Please set start and end times.'); return; }
 
@@ -1569,11 +1610,13 @@ async function saveModal() {
     return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00${sign}${pad(Math.floor(Math.abs(off)/60))}:${pad(Math.abs(off)%60)}`;
   }
 
+  // Prepend "Tentative" line to description for persistence (readable in Google Calendar too)
+  const fullDesc = isTentative ? (desc ? `Tentative\n${desc}` : 'Tentative') : (desc || undefined);
   const body = {
     summary:     title,
     start:       { dateTime: toOffsetISO(startDt) },
     end:         { dateTime: toOffsetISO(endDt) },
-    description: desc || undefined,
+    description: fullDesc,
     location:    location || undefined,
   };
 
@@ -1594,7 +1637,8 @@ async function saveModal() {
         id: created.id, calId,
         title: created.summary || '(No title)',
         start: new Date(start), end: new Date(end),
-        desc: created.description || '', location: created.location || '',
+        desc: desc, location: created.location || '',
+        isTentative,
       });
     } else {
       const origCalId = modalEventRef.calId;
@@ -1618,7 +1662,8 @@ async function saveModal() {
           id: created.id, calId,
           title: created.summary || '(No title)',
           start: new Date(cs), end: new Date(ce),
-          desc: created.description || '', location: created.location || '',
+          desc: desc, location: created.location || '',
+          isTentative,
         });
       } else {
         const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(origCalId)}/events/${encodeURIComponent(modalEventRef.id)}`;
@@ -1631,7 +1676,8 @@ async function saveModal() {
             id: updated.id, calId: origCalId,
             title: updated.summary || '(No title)',
             start: new Date(start), end: new Date(end),
-            desc: updated.description || '', location: updated.location || '',
+            desc: desc, location: updated.location || '',
+            isTentative,
           };
         }
       }
