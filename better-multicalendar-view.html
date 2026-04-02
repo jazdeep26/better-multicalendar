@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calendar View</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --hour-height: 64px;
+  --time-col-width: 52px;
+  --lane-min-width: 130px;
+  --header-height: 56px;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f0f2f5;
+  color: #1a1a1a;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── AUTH SCREEN ── */
+#auth-screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: #fff;
+}
+#auth-screen h1 { font-size: 24px; font-weight: 700; color: #1a1a1a; }
+#auth-screen p  { font-size: 14px; color: #666; max-width: 360px; text-align: center; line-height: 1.6; }
+
+.signin-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  transition: box-shadow 0.15s;
+}
+.signin-btn:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+.signin-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+.config-hint {
+  font-size: 12px;
+  color: #aaa;
+  text-align: center;
+  max-width: 400px;
+  line-height: 1.6;
+}
+.config-hint code {
+  background: #f5f5f5;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+/* ── TOP BAR ── */
+#app { display: none; flex-direction: column; height: 100vh; }
+
+.topbar {
+  background: #fff;
+  border-bottom: 1px solid #e0e0e0;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  z-index: 10;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+.topbar h1 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin-right: 4px;
+}
+
+.view-btns {
+  display: flex;
+  gap: 4px;
+  background: #f0f2f5;
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.view-btn {
+  padding: 5px 14px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: #666;
+  transition: all 0.15s;
+}
+.view-btn.active {
+  background: #fff;
+  color: #1a1a1a;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+.nav-btns {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.nav-btn {
+  width: 30px; height: 30px;
+  border: 1px solid #ddd;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.1s;
+}
+.nav-btn:hover { background: #f5f5f5; }
+
+#date-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  min-width: 160px;
+  text-align: center;
+}
+
+.today-btn, .refresh-btn, .signout-btn {
+  padding: 5px 12px;
+  border: 1px solid #ddd;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+  transition: background 0.1s;
+}
+.today-btn:hover, .signout-btn:hover { background: #f5f5f5; }
+
+.refresh-btn {
+  border-color: #1a73e8;
+  color: #1a73e8;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.refresh-btn:hover { background: #e8f0fe; }
+.refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.refresh-btn .spin { animation: spin 0.8s linear infinite; display: inline-block; }
+
+.signout-btn { color: #888; border-color: #e0e0e0; font-size: 12px; }
+
+.cal-toggles {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.cal-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  border: 2px solid transparent;
+  transition: all 0.15s;
+  user-select: none;
+}
+.cal-toggle.off {
+  opacity: 0.35;
+  filter: grayscale(0.4);
+}
+.dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── STATUS BAR ── */
+#status {
+  font-size: 12px;
+  color: #999;
+  padding: 3px 16px;
+  flex-shrink: 0;
+  display: none;
+}
+
+/* ── CALENDAR GRID ── */
+.cal-container {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+
+.cal-grid {
+  display: flex;
+  flex-direction: column;
+  min-width: fit-content;
+}
+
+/* Day header row */
+.day-header-row {
+  display: flex;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #fff;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.time-gutter-header {
+  width: var(--time-col-width);
+  flex-shrink: 0;
+  border-right: 1px solid #e0e0e0;
+}
+
+.day-col-header {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #e0e0e0;
+}
+.day-label {
+  padding: 8px 8px 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.day-number {
+  padding: 2px 8px 6px;
+  font-size: 22px;
+  font-weight: 700;
+  color: #1a1a1a;
+  line-height: 1;
+}
+.day-col-header.today .day-number {
+  color: #fff;
+  background: #1a73e8;
+  border-radius: 50%;
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  margin: 2px 8px 4px;
+  font-size: 18px;
+}
+
+/* Lane labels row */
+.lane-labels-row {
+  display: flex;
+  position: sticky;
+  top: var(--header-height);
+  z-index: 4;
+  background: #fafafa;
+  border-bottom: 1px solid #e0e0e0;
+}
+.time-gutter-spacer {
+  width: var(--time-col-width);
+  flex-shrink: 0;
+  border-right: 1px solid #e0e0e0;
+}
+.lane-labels-day {
+  flex: 1;
+  display: flex;
+  border-right: 1px solid #e0e0e0;
+}
+.lane-label {
+  flex: 1;
+  padding: 3px 4px;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  border-right: 1px solid #e8e8e8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lane-label:last-child { border-right: none; }
+
+/* Body */
+.cal-body { display: flex; position: relative; }
+
+.time-gutter {
+  width: var(--time-col-width);
+  flex-shrink: 0;
+  border-right: 1px solid #e0e0e0;
+}
+.time-slot {
+  height: var(--hour-height);
+  border-bottom: 1px solid #f0f0f0;
+  display: flex;
+  align-items: flex-start;
+  padding-top: 4px;
+  padding-right: 6px;
+  justify-content: flex-end;
+}
+.time-slot span { font-size: 10px; color: #aaa; font-weight: 500; }
+
+.days-area { flex: 1; display: flex; }
+
+.day-col {
+  flex: 1;
+  display: flex;
+  border-right: 1px solid #e0e0e0;
+  position: relative;
+}
+.today-col { background: #fffef0; }
+
+.hour-lines { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+.hour-line  { position: absolute; left: 0; right: 0; border-top: 1px solid #f0f0f0; }
+.hour-line.major { border-top-color: #e8e8e8; }
+.half-line  { position: absolute; left: 0; right: 0; border-top: 1px dashed #f5f5f5; }
+
+.lane-col {
+  flex: 1;
+  position: relative;
+  border-right: 1px solid #eeeeee;
+  min-width: var(--lane-min-width);
+}
+.lane-col:last-child { border-right: none; }
+
+/* Events */
+.event {
+  position: absolute;
+  border-radius: 6px;
+  padding: 3px 5px;
+  font-size: 11px;
+  font-weight: 600;
+  overflow: hidden;
+  cursor: default;
+  z-index: 2;
+  border-left: 3px solid transparent;
+  line-height: 1.3;
+  transition: box-shadow 0.15s;
+}
+.event:hover { box-shadow: 0 3px 10px rgba(0,0,0,0.2); z-index: 10; }
+.event .ev-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.event .ev-time  { font-size: 10px; font-weight: 400; opacity: 0.8; margin-top: 1px; }
+
+/* Now line */
+.now-line {
+  position: absolute;
+  left: 0; right: 0;
+  height: 2px;
+  background: #ea4335;
+  z-index: 3;
+  pointer-events: none;
+}
+.now-line::before {
+  content: '';
+  position: absolute;
+  left: -4px; top: -4px;
+  width: 10px; height: 10px;
+  background: #ea4335;
+  border-radius: 50%;
+}
+
+/* Tooltip */
+.tooltip {
+  position: fixed;
+  background: #2d2d2d;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 999;
+  max-width: 240px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  display: none;
+  line-height: 1.5;
+}
+
+/* Loading overlay */
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255,255,255,0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  font-size: 14px;
+  color: #666;
+  flex-direction: column;
+  gap: 12px;
+}
+.spinner {
+  width: 32px; height: 32px;
+  border: 3px solid #e0e0e0;
+  border-top-color: #1a73e8;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- AUTH SCREEN (shown when not signed in) -->
+<div id="auth-screen">
+  <h1>Calendar View</h1>
+  <p>A clean multi-calendar view with separate lanes per calendar, day/3-day/week views, and toggle controls.</p>
+  <button class="signin-btn" id="signin-btn">
+    <!-- Google logo -->
+    <svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.08 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.35-8.16 2.35-6.26 0-11.57-3.59-13.46-8.83l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg>
+    Sign in with Google
+  </button>
+  <p class="config-hint" id="config-hint" style="display:none"></p>
+</div>
+
+<!-- MAIN APP (shown after sign-in) -->
+<div id="app">
+  <div class="topbar">
+    <h1>Calendar View</h1>
+
+    <div class="view-btns">
+      <button class="view-btn" data-view="1">Day</button>
+      <button class="view-btn active" data-view="3">3 Days</button>
+      <button class="view-btn" data-view="7">Week</button>
+    </div>
+
+    <div class="nav-btns">
+      <button class="nav-btn" id="prev-btn">&#8249;</button>
+      <button class="today-btn" id="today-btn">Today</button>
+      <button class="nav-btn" id="next-btn">&#8250;</button>
+    </div>
+
+    <div id="date-label"></div>
+
+    <button class="refresh-btn" id="refresh-btn">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      Refresh
+    </button>
+
+    <div class="cal-toggles" id="cal-toggles"></div>
+
+    <button class="signout-btn" id="signout-btn">Sign out</button>
+  </div>
+
+  <div id="status"></div>
+
+  <div class="cal-container" id="cal-container">
+    <div class="loading-overlay" id="loading">
+      <div class="spinner"></div>
+      <span id="loading-msg">Loading calendars…</span>
+    </div>
+    <div class="cal-grid" id="cal-grid"></div>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+// ── CONFIG ────────────────────────────────────────────────────────────────────
+// Replace with your own OAuth 2.0 Client ID from Google Cloud Console.
+// Create one at: console.cloud.google.com → APIs & Services → Credentials
+// Type: Web application. Add your hosted URL (and http://localhost:PORT) as
+// Authorised redirect URIs.
+const CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID';
+
+const SCOPES = 'https://www.googleapis.com/auth/calendar.readonly';
+const REDIRECT_URI = location.origin + location.pathname;
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let accessToken  = null;
+let tokenExpiry  = 0;
+let calendarList = [];           // [{id, summary, backgroundColor, foregroundColor}]
+let activeCalendars = new Set(); // set of calendar IDs
+let cachedEvents = {};           // calId -> [event, ...]
+let viewDays     = 3;
+let anchorDate   = startOfToday();
+
+// ── DATE HELPERS ──────────────────────────────────────────────────────────────
+function startOfToday() {
+  const d = new Date(); d.setHours(0,0,0,0); return d;
+}
+function addDays(d, n) {
+  const r = new Date(d); r.setDate(r.getDate() + n); return r;
+}
+function fmtDate(d) { return d.toISOString().slice(0,10); }
+function fmtTime(d) {
+  return d.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', hour12:true });
+}
+function getViewStart() {
+  if (viewDays === 7) {
+    const d = new Date(anchorDate);
+    const diff = d.getDay() === 0 ? -6 : 1 - d.getDay();
+    d.setDate(d.getDate() + diff);
+    return d;
+  }
+  return new Date(anchorDate);
+}
+function isToday(d) { return fmtDate(d) === fmtDate(startOfToday()); }
+
+// ── OAUTH PKCE ────────────────────────────────────────────────────────────────
+function b64url(buf) {
+  return btoa(String.fromCharCode(...new Uint8Array(buf)))
+    .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+}
+async function generatePKCE() {
+  const verifier = b64url(crypto.getRandomValues(new Uint8Array(48)));
+  const challenge = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+  return { verifier, challenge };
+}
+
+async function startLogin() {
+  if (CLIENT_ID === 'YOUR_GOOGLE_OAUTH_CLIENT_ID') {
+    document.getElementById('config-hint').style.display = 'block';
+    document.getElementById('config-hint').innerHTML =
+      'Set your <code>CLIENT_ID</code> at the top of the &lt;script&gt; block in this HTML file. ' +
+      'Get one free at <a href="https://console.cloud.google.com" target="_blank">console.cloud.google.com</a>.';
+    return;
+  }
+  const { verifier, challenge } = await generatePKCE();
+  sessionStorage.setItem('pkce_verifier', verifier);
+  sessionStorage.setItem('pkce_redirect', location.href);
+
+  const params = new URLSearchParams({
+    client_id:             CLIENT_ID,
+    redirect_uri:          REDIRECT_URI,
+    response_type:         'code',
+    scope:                 SCOPES,
+    code_challenge:        challenge,
+    code_challenge_method: 'S256',
+    access_type:           'online',
+    prompt:                'consent',
+  });
+  location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params;
+}
+
+async function handleCallback(code) {
+  const verifier = sessionStorage.getItem('pkce_verifier');
+  if (!verifier) { showAuthScreen(); return; }
+  sessionStorage.removeItem('pkce_verifier');
+  // Clean the URL
+  history.replaceState({}, '', location.pathname);
+
+  setLoadingMsg('Signing in…');
+  try {
+    const resp = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id:     CLIENT_ID,
+        code,
+        code_verifier: verifier,
+        grant_type:    'authorization_code',
+        redirect_uri:  REDIRECT_URI,
+      }),
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error_description || data.error);
+    storeToken(data.access_token, data.expires_in);
+    await initApp();
+  } catch (e) {
+    showAuthScreen('Sign-in failed: ' + e.message);
+  }
+}
+
+function storeToken(token, expiresIn) {
+  accessToken = token;
+  tokenExpiry = Date.now() + (expiresIn - 60) * 1000;
+  sessionStorage.setItem('access_token', token);
+  sessionStorage.setItem('token_expiry', tokenExpiry);
+}
+
+function loadStoredToken() {
+  const t = sessionStorage.getItem('access_token');
+  const e = parseInt(sessionStorage.getItem('token_expiry') || '0');
+  if (t && e > Date.now()) { accessToken = t; tokenExpiry = e; return true; }
+  return false;
+}
+
+function isTokenValid() { return accessToken && Date.now() < tokenExpiry; }
+
+async function apiGet(url) {
+  if (!isTokenValid()) {
+    sessionStorage.removeItem('access_token');
+    sessionStorage.removeItem('token_expiry');
+    showAuthScreen('Session expired — please sign in again.');
+    throw new Error('token_expired');
+  }
+  const resp = await fetch(url, { headers: { Authorization: 'Bearer ' + accessToken } });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error?.message || `HTTP ${resp.status}`);
+  }
+  return resp.json();
+}
+
+// ── CALENDAR LIST ─────────────────────────────────────────────────────────────
+async function fetchCalendarList() {
+  const data = await apiGet('https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=250');
+  return (data.items || []).filter(c => c.accessRole !== 'none');
+}
+
+// ── EVENTS ────────────────────────────────────────────────────────────────────
+async function fetchEvents(calId, timeMin, timeMax) {
+  const events = [];
+  let pageToken = '';
+  do {
+    const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events`);
+    url.searchParams.set('timeMin', timeMin);
+    url.searchParams.set('timeMax', timeMax);
+    url.searchParams.set('singleEvents', 'true');
+    url.searchParams.set('orderBy', 'startTime');
+    url.searchParams.set('maxResults', '500');
+    if (pageToken) url.searchParams.set('pageToken', pageToken);
+    const data = await apiGet(url.toString());
+    for (const ev of (data.items || [])) {
+      const start = ev.start?.dateTime || ev.start?.date;
+      const end   = ev.end?.dateTime   || ev.end?.date;
+      if (!start) continue;
+      events.push({
+        id:       ev.id,
+        title:    ev.summary || '(No title)',
+        start:    new Date(start),
+        end:      new Date(end),
+        desc:     ev.description || '',
+        location: ev.location || '',
+      });
+    }
+    pageToken = data.nextPageToken || '';
+  } while (pageToken);
+  return events;
+}
+
+async function loadAllEvents() {
+  const timeMin = addDays(anchorDate, -7).toISOString();
+  const timeMax = addDays(anchorDate, viewDays + 7).toISOString();
+
+  const active = [...activeCalendars];
+  const results = await Promise.allSettled(
+    active.map(id => fetchEvents(id, timeMin, timeMax))
+  );
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled') cachedEvents[active[i]] = r.value;
+    else { console.warn('Error fetching', active[i], r.reason); cachedEvents[active[i]] = []; }
+  });
+}
+
+// ── APP INIT ──────────────────────────────────────────────────────────────────
+async function initApp() {
+  showApp();
+  setLoadingMsg('Loading your calendars…');
+  showLoading(true);
+
+  try {
+    calendarList = await fetchCalendarList();
+  } catch (e) {
+    if (e.message === 'token_expired') return;
+    showLoading(false);
+    setStatus('Failed to load calendars: ' + e.message);
+    return;
+  }
+
+  // All calendars active by default
+  activeCalendars = new Set(calendarList.map(c => c.id));
+  renderToggles();
+
+  await refreshEvents();
+}
+
+async function refreshEvents() {
+  setLoadingMsg('Fetching events…');
+  showLoading(true);
+  document.getElementById('refresh-btn').disabled = true;
+
+  try {
+    await loadAllEvents();
+  } catch (e) {
+    if (e.message === 'token_expired') return;
+    setStatus('Error: ' + e.message);
+  }
+
+  showLoading(false);
+  document.getElementById('refresh-btn').disabled = false;
+  setStatus('Updated ' + new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', hour12:true }));
+  renderGrid();
+}
+
+// ── TOGGLES ───────────────────────────────────────────────────────────────────
+function renderToggles() {
+  const container = document.getElementById('cal-toggles');
+  container.innerHTML = '';
+  calendarList.forEach(cal => {
+    const bg  = cal.backgroundColor || '#4285f4';
+    const fg  = cal.foregroundColor  || '#fff';
+    // Lighten bg for the pill background
+    const pill = document.createElement('div');
+    pill.className = 'cal-toggle' + (activeCalendars.has(cal.id) ? '' : ' off');
+    pill.dataset.calId = cal.id;
+    pill.style.cssText = `background:${bg}22; color:${bg}; border-color:${bg};`;
+    pill.innerHTML = `<span class="dot" style="background:${bg}"></span>${escHtml(cal.summary)}`;
+    pill.addEventListener('click', () => {
+      if (activeCalendars.has(cal.id)) {
+        activeCalendars.delete(cal.id);
+        pill.classList.add('off');
+      } else {
+        activeCalendars.add(cal.id);
+        pill.classList.remove('off');
+      }
+      renderGrid();
+    });
+    container.appendChild(pill);
+  });
+}
+
+// ── RENDER ────────────────────────────────────────────────────────────────────
+const DAY_ABBR  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const DAY_FULL  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const MONTH_ABR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const START_HOUR = 7;
+const END_HOUR   = 20;
+const TOTAL_HRS  = END_HOUR - START_HOUR;
+
+function layoutEvents(events) {
+  if (!events.length) return [];
+  const sorted = [...events].sort((a, b) => {
+    const d = a.start - b.start;
+    return d !== 0 ? d : (b.end - b.start) - (a.end - a.start);
+  });
+  const result = sorted.map(ev => ({ ev, col: 0, numCols: 1 }));
+  let i = 0;
+  while (i < sorted.length) {
+    let clusterEnd = sorted[i].end;
+    let j = i + 1;
+    while (j < sorted.length && sorted[j].start < clusterEnd) {
+      if (sorted[j].end > clusterEnd) clusterEnd = sorted[j].end;
+      j++;
+    }
+    const cluster = result.slice(i, j);
+    const cols = [];
+    cluster.forEach(item => {
+      let placed = false;
+      for (let c = 0; c < cols.length; c++) {
+        if (item.ev.start >= cols[c]) { item.col = c; cols[c] = item.ev.end; placed = true; break; }
+      }
+      if (!placed) { item.col = cols.length; cols.push(item.ev.end); }
+    });
+    cluster.forEach(item => { item.numCols = cols.length; });
+    i = j;
+  }
+  return result;
+}
+
+function renderGrid() {
+  const grid = document.getElementById('cal-grid');
+  grid.innerHTML = '';
+
+  const activeCals = calendarList.filter(c => activeCalendars.has(c.id));
+  if (!activeCals.length) {
+    grid.innerHTML = '<div style="padding:40px;text-align:center;color:#999">Toggle on at least one calendar above.</div>';
+    updateDateLabel();
+    return;
+  }
+
+  const viewStart = getViewStart();
+  const days = Array.from({ length: viewDays }, (_, i) => addDays(viewStart, i));
+  updateDateLabel(days);
+
+  const hourPx  = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--hour-height')) || 64;
+  const pxPerMin = hourPx / 60;
+
+  // Day header row
+  const hRow = document.createElement('div');
+  hRow.className = 'day-header-row';
+  hRow.style.height = 'var(--header-height)';
+  hRow.appendChild(el('div', 'time-gutter-header'));
+  days.forEach(d => {
+    const dh = el('div', 'day-col-header' + (isToday(d) ? ' today' : ''));
+    dh.innerHTML = `<div class="day-label">${DAY_ABBR[d.getDay()]}</div><div class="day-number">${d.getDate()}</div>`;
+    hRow.appendChild(dh);
+  });
+  grid.appendChild(hRow);
+
+  // Lane labels row
+  const llRow = document.createElement('div');
+  llRow.className = 'lane-labels-row';
+  llRow.appendChild(el('div', 'time-gutter-spacer'));
+  days.forEach(() => {
+    const lld = el('div', 'lane-labels-day');
+    activeCals.forEach(cal => {
+      const ll = el('div', 'lane-label');
+      ll.textContent = cal.summary;
+      ll.style.color      = cal.backgroundColor || '#4285f4';
+      ll.style.background = (cal.backgroundColor || '#4285f4') + '18';
+      lld.appendChild(ll);
+    });
+    llRow.appendChild(lld);
+  });
+  grid.appendChild(llRow);
+
+  // Body
+  const body = el('div', 'cal-body');
+
+  // Time gutter
+  const tg = el('div', 'time-gutter');
+  for (let h = START_HOUR; h <= END_HOUR; h++) {
+    const ts = el('div', 'time-slot');
+    if (h < END_HOUR) {
+      const lbl = h === 12 ? '12 PM' : h > 12 ? `${h-12} PM` : `${h} AM`;
+      ts.innerHTML = `<span>${lbl}</span>`;
+    }
+    tg.appendChild(ts);
+  }
+  body.appendChild(tg);
+
+  // Days area
+  const daysArea = el('div', 'days-area');
+  days.forEach(d => {
+    const dayCol = el('div', 'day-col' + (isToday(d) ? ' today-col' : ''));
+    const totalH = TOTAL_HRS * hourPx;
+    dayCol.style.minHeight = totalH + 'px';
+
+    // Hour lines
+    const hl = el('div', 'hour-lines');
+    for (let h = 0; h < TOTAL_HRS; h++) {
+      const line = el('div', 'hour-line major'); line.style.top = (h * hourPx) + 'px'; hl.appendChild(line);
+      const half = el('div', 'half-line');       half.style.top = (h * hourPx + hourPx/2) + 'px'; hl.appendChild(half);
+    }
+    dayCol.appendChild(hl);
+
+    // Now line
+    if (isToday(d)) {
+      const now = new Date();
+      const nowMins = (now.getHours() - START_HOUR) * 60 + now.getMinutes();
+      if (nowMins >= 0 && nowMins <= TOTAL_HRS * 60) {
+        const nl = el('div', 'now-line'); nl.style.top = (nowMins * pxPerMin) + 'px'; dayCol.appendChild(nl);
+      }
+    }
+
+    // Lane columns
+    activeCals.forEach(cal => {
+      const lane = el('div', 'lane-col');
+      lane.style.minHeight = totalH + 'px';
+
+      const events = (cachedEvents[cal.id] || []).filter(ev => fmtDate(ev.start) === fmtDate(d));
+      const laid = layoutEvents(events);
+      const color = cal.backgroundColor || '#4285f4';
+
+      laid.forEach(({ ev, col, numCols }) => {
+        const startMins = (ev.start.getHours() - START_HOUR) * 60 + ev.start.getMinutes();
+        const endMins   = (ev.end.getHours()   - START_HOUR) * 60 + ev.end.getMinutes();
+        const top    = Math.max(0, startMins * pxPerMin);
+        const height = Math.max(20, (endMins - startMins) * pxPerMin - 2);
+
+        const evEl = el('div', 'event');
+        evEl.style.top             = top + 'px';
+        evEl.style.height          = height + 'px';
+        evEl.style.background      = color + '22';
+        evEl.style.color           = color;
+        evEl.style.borderLeftColor = color;
+
+        const g = 2, pct = 100 / numCols;
+        evEl.style.left  = `calc(${col * pct}% + ${g}px)`;
+        evEl.style.width = `calc(${pct}% - ${g * 2}px)`;
+
+        const dur = endMins - startMins;
+        evEl.innerHTML = dur >= 30
+          ? `<div class="ev-title">${escHtml(ev.title)}</div><div class="ev-time">${fmtTime(ev.start)}–${fmtTime(ev.end)}</div>`
+          : `<div class="ev-title">${escHtml(ev.title)}</div>`;
+
+        evEl.addEventListener('mouseenter', e => showTooltip(e, ev, cal));
+        evEl.addEventListener('mousemove',  e => moveTooltip(e));
+        evEl.addEventListener('mouseleave', hideTooltip);
+        lane.appendChild(evEl);
+      });
+
+      dayCol.appendChild(lane);
+    });
+    daysArea.appendChild(dayCol);
+  });
+
+  body.appendChild(daysArea);
+  grid.appendChild(body);
+
+  // Scroll to 8 AM
+  const container = document.getElementById('cal-container');
+  container.scrollTop = (8 - START_HOUR) * 60 * pxPerMin + 86;
+}
+
+// ── TOOLTIP ───────────────────────────────────────────────────────────────────
+const tooltipEl = document.getElementById('tooltip');
+function showTooltip(e, ev, cal) {
+  tooltipEl.innerHTML = `
+    <strong>${escHtml(ev.title)}</strong><br>
+    <span style="opacity:0.75">${escHtml(cal.summary)}</span><br>
+    ${fmtTime(ev.start)} – ${fmtTime(ev.end)}
+    ${ev.location ? `<br>📍 ${escHtml(ev.location)}` : ''}
+    ${ev.desc     ? `<br><span style="opacity:0.7;font-size:11px">${escHtml(ev.desc.slice(0,100))}</span>` : ''}
+  `;
+  tooltipEl.style.display = 'block';
+  moveTooltip(e);
+}
+function moveTooltip(e) {
+  let x = e.clientX + 16, y = e.clientY - 8;
+  if (x + 260 > window.innerWidth) x = e.clientX - 270;
+  tooltipEl.style.left = x + 'px';
+  tooltipEl.style.top  = y + 'px';
+}
+function hideTooltip() { tooltipEl.style.display = 'none'; }
+
+// ── UI HELPERS ────────────────────────────────────────────────────────────────
+function el(tag, cls) { const e = document.createElement(tag); if (cls) e.className = cls; return e; }
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function showApp()        { document.getElementById('auth-screen').style.display = 'none';  document.getElementById('app').style.display = 'flex'; }
+function showAuthScreen(msg) {
+  document.getElementById('auth-screen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  if (msg) { const h = document.getElementById('config-hint'); h.style.display='block'; h.textContent = msg; }
+}
+function showLoading(on)  { document.getElementById('loading').style.display = on ? 'flex' : 'none'; }
+function setLoadingMsg(m) { document.getElementById('loading-msg').textContent = m; }
+function setStatus(msg)   {
+  const s = document.getElementById('status');
+  s.textContent = msg; s.style.display = msg ? 'block' : 'none';
+}
+
+function updateDateLabel(days) {
+  const label = document.getElementById('date-label');
+  if (!days) { label.textContent = ''; return; }
+  const first = days[0], last = days[days.length-1];
+  if (viewDays === 1) {
+    label.textContent = `${DAY_FULL[first.getDay()]}, ${MONTH_ABR[first.getMonth()]} ${first.getDate()}, ${first.getFullYear()}`;
+  } else if (first.getMonth() === last.getMonth()) {
+    label.textContent = `${MONTH_ABR[first.getMonth()]} ${first.getDate()}–${last.getDate()}, ${first.getFullYear()}`;
+  } else {
+    label.textContent = `${MONTH_ABR[first.getMonth()]} ${first.getDate()} – ${MONTH_ABR[last.getMonth()]} ${last.getDate()}, ${last.getFullYear()}`;
+  }
+}
+
+// ── EVENT HANDLERS ────────────────────────────────────────────────────────────
+document.getElementById('signin-btn').addEventListener('click', startLogin);
+document.getElementById('signout-btn').addEventListener('click', () => {
+  sessionStorage.removeItem('access_token');
+  sessionStorage.removeItem('token_expiry');
+  showAuthScreen();
+});
+document.getElementById('refresh-btn').addEventListener('click', refreshEvents);
+
+document.querySelectorAll('.view-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    viewDays = parseInt(btn.dataset.view);
+    if (viewDays === 7) {
+      const d = new Date(anchorDate), day = d.getDay();
+      d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+      anchorDate = d;
+    }
+    renderGrid();
+  });
+});
+document.getElementById('prev-btn').addEventListener('click', () => { anchorDate = addDays(anchorDate, -viewDays); renderGrid(); });
+document.getElementById('next-btn').addEventListener('click', () => { anchorDate = addDays(anchorDate, +viewDays); renderGrid(); });
+document.getElementById('today-btn').addEventListener('click', () => { anchorDate = startOfToday(); renderGrid(); });
+
+// Refresh now-line every minute
+setInterval(() => {
+  const nl = document.querySelector('.now-line');
+  if (!nl) return;
+  const hourPx = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--hour-height')) || 64;
+  const nowMins = (new Date().getHours() - START_HOUR) * 60 + new Date().getMinutes();
+  if (nowMins >= 0 && nowMins <= TOTAL_HRS * 60) nl.style.top = (nowMins * hourPx / 60) + 'px';
+}, 60000);
+
+// ── BOOT ──────────────────────────────────────────────────────────────────────
+(async () => {
+  const params = new URLSearchParams(location.search);
+  const code   = params.get('code');
+  const error  = params.get('error');
+
+  if (error) {
+    history.replaceState({}, '', location.pathname);
+    showAuthScreen('Google sign-in was cancelled or denied.');
+    return;
+  }
+
+  if (code) {
+    showApp();
+    showLoading(true);
+    await handleCallback(code);
+    return;
+  }
+
+  if (loadStoredToken()) {
+    await initApp();
+    return;
+  }
+
+  showAuthScreen();
+})();
+</script>
+</body>
+</html>
