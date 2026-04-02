@@ -416,6 +416,76 @@ body {
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── DARK MODE ── */
+body.dark {
+  background: #1a1a2e;
+  color: #e0e0e0;
+}
+body.dark .topbar {
+  background: #16213e;
+  border-bottom-color: #2a2a4a;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+body.dark .topbar h1,
+body.dark #date-label { color: #e0e0e0; }
+body.dark .view-btns { background: #0f3460; }
+body.dark .view-btn { color: #aaa; }
+body.dark .view-btn.active { background: #1a1a2e; color: #e0e0e0; }
+body.dark .nav-btn {
+  background: #16213e;
+  border-color: #2a2a4a;
+  color: #ccc;
+}
+body.dark .nav-btn:hover { background: #0f3460; }
+body.dark .today-btn, body.dark .signout-btn {
+  background: #16213e;
+  border-color: #2a2a4a;
+  color: #ccc;
+}
+body.dark .today-btn:hover, body.dark .signout-btn:hover { background: #0f3460; }
+body.dark .refresh-btn { background: #16213e; }
+body.dark .refresh-btn:hover { background: #1a2a5e; }
+body.dark #auth-screen { background: #16213e; }
+body.dark #auth-screen h1 { color: #e0e0e0; }
+body.dark .day-header-row { background: #16213e; border-bottom-color: #2a2a4a; }
+body.dark .lane-labels-row { background: #1a1a2e; border-bottom-color: #2a2a4a; }
+body.dark .time-gutter-header,
+body.dark .time-gutter-spacer,
+body.dark .time-gutter { border-right-color: #2a2a4a; }
+body.dark .day-col-header { border-right-color: #2a2a4a; }
+body.dark .day-number { color: #e0e0e0; }
+body.dark .day-label { color: #888; }
+body.dark .day-col { border-right-color: #2a2a4a; }
+body.dark .today-col { background: #1e2a1e; }
+body.dark .hour-line, body.dark .hour-line.major { border-top-color: #2a2a3a; }
+body.dark .half-line { border-top-color: #22223a; }
+body.dark .time-slot { border-bottom-color: #2a2a3a; }
+body.dark .time-slot span { color: #555; }
+body.dark .lane-col { border-right-color: #2a2a3a; }
+body.dark .lane-labels-day { border-right-color: #2a2a4a; }
+body.dark .lane-label { border-right-color: #2a2a3a; }
+body.dark .loading-overlay { background: rgba(22,33,62,0.9); color: #ccc; }
+body.dark .spinner { border-color: #2a2a4a; border-top-color: #1a73e8; }
+
+/* ── DRAG REORDER ── */
+.cal-toggle { cursor: grab; }
+.cal-toggle.dragging { opacity: 0.5; cursor: grabbing; }
+.cal-toggle.drag-over { outline: 2px dashed currentColor; outline-offset: 2px; }
+
+/* ── DARK TOGGLE BTN ── */
+.dark-toggle-btn {
+  padding: 5px 10px;
+  border: 1px solid #ddd;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.1s;
+}
+.dark-toggle-btn:hover { background: #f5f5f5; }
+body.dark .dark-toggle-btn { background: #16213e; border-color: #2a2a4a; }
+body.dark .dark-toggle-btn:hover { background: #0f3460; }
 </style>
 </head>
 <body>
@@ -458,6 +528,7 @@ body {
 
     <div class="cal-toggles" id="cal-toggles"></div>
 
+    <button class="dark-toggle-btn" id="dark-toggle-btn" title="Toggle dark mode">🌙</button>
     <button class="signout-btn" id="signout-btn">Sign out</button>
   </div>
 
@@ -480,8 +551,8 @@ body {
 // Create one at: console.cloud.google.com → APIs & Services → Credentials
 // Type: Web application. Add your hosted URL (and http://localhost:PORT) as
 // Authorised redirect URIs.
-const CLIENT_ID     = 'YOUR_CLIENT_ID';     // paste from Google Cloud Console → Credentials
-const CLIENT_SECRET = 'YOUR_CLIENT_SECRET'; // paste from Google Cloud Console → Credentials
+const CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID';
+const CLIENT_SECRET = 'REDACTED'; // paste from Google Cloud Console
 
 const SCOPES = 'https://www.googleapis.com/auth/calendar.readonly';
 const REDIRECT_URI = location.origin + location.pathname;
@@ -494,6 +565,24 @@ let activeCalendars = new Set(); // set of calendar IDs
 let cachedEvents = {};           // calId -> [event, ...]
 let viewDays     = 3;
 let anchorDate   = startOfToday();
+
+// ── PREFERENCES (localStorage) ───────────────────────────────────────────────
+const PREF_KEY = 'calview_prefs';
+function savePrefs() {
+  localStorage.setItem(PREF_KEY, JSON.stringify({
+    darkMode:      document.body.classList.contains('dark'),
+    viewDays,
+    calOrder:      calendarList.map(c => c.id),
+    activeCalendars: [...activeCalendars],
+  }));
+}
+function loadPrefs() {
+  try { return JSON.parse(localStorage.getItem(PREF_KEY) || 'null'); } catch { return null; }
+}
+function applyDarkPref(dark) {
+  document.body.classList.toggle('dark', dark);
+  document.getElementById('dark-toggle-btn').textContent = dark ? '☀️' : '🌙';
+}
 
 // ── DATE HELPERS ──────────────────────────────────────────────────────────────
 function startOfToday() {
@@ -680,8 +769,25 @@ async function initApp() {
     return;
   }
 
-  // All calendars active by default
-  activeCalendars = new Set(calendarList.map(c => c.id));
+  // Restore preferences
+  const prefs = loadPrefs();
+  if (prefs) {
+    // Restore active set (fall back to all if no saved prefs)
+    activeCalendars = new Set(
+      prefs.activeCalendars
+        ? calendarList.map(c => c.id).filter(id => prefs.activeCalendars.includes(id))
+        : calendarList.map(c => c.id)
+    );
+    // Restore calendar order
+    if (prefs.calOrder) {
+      const ordered = [];
+      prefs.calOrder.forEach(id => { const c = calendarList.find(x => x.id === id); if (c) ordered.push(c); });
+      calendarList.forEach(c => { if (!ordered.includes(c)) ordered.push(c); });
+      calendarList = ordered;
+    }
+  } else {
+    activeCalendars = new Set(calendarList.map(c => c.id));
+  }
   renderToggles();
 
   await refreshEvents();
@@ -706,18 +812,20 @@ async function refreshEvents() {
 }
 
 // ── TOGGLES ───────────────────────────────────────────────────────────────────
+let dragSrcCalId = null;
+
 function renderToggles() {
   const container = document.getElementById('cal-toggles');
   container.innerHTML = '';
   calendarList.forEach(cal => {
     const bg  = cal.backgroundColor || '#4285f4';
-    const fg  = cal.foregroundColor  || '#fff';
-    // Lighten bg for the pill background
     const pill = document.createElement('div');
     pill.className = 'cal-toggle' + (activeCalendars.has(cal.id) ? '' : ' off');
     pill.dataset.calId = cal.id;
     pill.style.cssText = `background:${bg}22; color:${bg}; border-color:${bg};`;
     pill.innerHTML = `<span class="dot" style="background:${bg}"></span>${escHtml(cal.summary)}`;
+
+    // Click to toggle visibility
     pill.addEventListener('click', () => {
       if (activeCalendars.has(cal.id)) {
         activeCalendars.delete(cal.id);
@@ -726,8 +834,41 @@ function renderToggles() {
         activeCalendars.add(cal.id);
         pill.classList.remove('off');
       }
+      savePrefs();
       renderGrid();
     });
+
+    // Drag to reorder
+    pill.draggable = true;
+    pill.addEventListener('dragstart', e => {
+      dragSrcCalId = cal.id;
+      pill.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    pill.addEventListener('dragend', () => {
+      pill.classList.remove('dragging');
+      container.querySelectorAll('.cal-toggle').forEach(p => p.classList.remove('drag-over'));
+    });
+    pill.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (cal.id !== dragSrcCalId) pill.classList.add('drag-over');
+    });
+    pill.addEventListener('dragleave', () => pill.classList.remove('drag-over'));
+    pill.addEventListener('drop', e => {
+      e.preventDefault();
+      pill.classList.remove('drag-over');
+      if (!dragSrcCalId || dragSrcCalId === cal.id) return;
+      const srcIdx  = calendarList.findIndex(c => c.id === dragSrcCalId);
+      const destIdx = calendarList.findIndex(c => c.id === cal.id);
+      if (srcIdx === -1 || destIdx === -1) return;
+      const [moved] = calendarList.splice(srcIdx, 1);
+      calendarList.splice(destIdx, 0, moved);
+      savePrefs();
+      renderToggles();
+      renderGrid();
+    });
+
     container.appendChild(pill);
   });
 }
@@ -958,6 +1099,11 @@ function updateDateLabel(days) {
 }
 
 // ── EVENT HANDLERS ────────────────────────────────────────────────────────────
+document.getElementById('dark-toggle-btn').addEventListener('click', () => {
+  const isDark = document.body.classList.toggle('dark');
+  document.getElementById('dark-toggle-btn').textContent = isDark ? '☀️' : '🌙';
+  savePrefs();
+});
 document.getElementById('signin-btn').addEventListener('click', startLogin);
 document.getElementById('signout-btn').addEventListener('click', () => {
   sessionStorage.removeItem('access_token');
@@ -976,11 +1122,12 @@ document.querySelectorAll('.view-btn').forEach(btn => {
       d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
       anchorDate = d;
     }
+    savePrefs();
     renderGrid();
   });
 });
-document.getElementById('prev-btn').addEventListener('click', () => { anchorDate = addDays(anchorDate, -viewDays); renderGrid(); });
-document.getElementById('next-btn').addEventListener('click', () => { anchorDate = addDays(anchorDate, +viewDays); renderGrid(); });
+document.getElementById('prev-btn').addEventListener('click', () => { anchorDate = addDays(anchorDate, viewDays === 7 ? -7 : -1); renderGrid(); });
+document.getElementById('next-btn').addEventListener('click', () => { anchorDate = addDays(anchorDate, viewDays === 7 ? +7 : +1); renderGrid(); });
 document.getElementById('today-btn').addEventListener('click', () => { anchorDate = startOfToday(); renderGrid(); });
 
 // Refresh now-line every minute
@@ -994,6 +1141,18 @@ setInterval(() => {
 
 // ── BOOT ──────────────────────────────────────────────────────────────────────
 (async () => {
+  // Restore dark mode and view before anything renders
+  const prefs = loadPrefs();
+  if (prefs) {
+    if (prefs.darkMode) applyDarkPref(true);
+    if (prefs.viewDays) {
+      viewDays = prefs.viewDays;
+      document.querySelectorAll('.view-btn').forEach(b => {
+        b.classList.toggle('active', parseInt(b.dataset.view) === viewDays);
+      });
+    }
+  }
+
   const params = new URLSearchParams(location.search);
   const code   = params.get('code');
   const error  = params.get('error');
