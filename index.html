@@ -1,9 +1,1966 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta http-equiv="refresh" content="0; url=better-multicalendar-view.html">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calendar View</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --hour-height: 64px;
+  --time-col-width: 52px;
+  --lane-min-width: 130px;
+  --header-height: 56px;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f0f2f5;
+  color: #1a1a1a;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── AUTH SCREEN ── */
+#auth-screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: #fff;
+}
+#auth-screen h1 { font-size: 24px; font-weight: 700; color: #1a1a1a; }
+#auth-screen p  { font-size: 14px; color: #666; max-width: 360px; text-align: center; line-height: 1.6; }
+
+.signin-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  transition: box-shadow 0.15s;
+}
+.signin-btn:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+.signin-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+.config-hint {
+  font-size: 12px;
+  color: #aaa;
+  text-align: center;
+  max-width: 400px;
+  line-height: 1.6;
+}
+.config-hint code {
+  background: #f5f5f5;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+/* ── TOP BAR ── */
+#app { display: none; flex-direction: column; height: 100vh; }
+
+.topbar {
+  background: #fff;
+  border-bottom: 1px solid #e0e0e0;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  z-index: 10;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+.topbar h1 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin-right: 4px;
+}
+
+.view-btns {
+  display: flex;
+  gap: 4px;
+  background: #f0f2f5;
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.view-btn {
+  padding: 5px 14px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: #666;
+  transition: all 0.15s;
+}
+.view-btn.active {
+  background: #fff;
+  color: #1a1a1a;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+.nav-btns {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.nav-btn {
+  width: 30px; height: 30px;
+  border: 1px solid #ddd;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.1s;
+}
+.nav-btn:hover { background: #f5f5f5; }
+
+#date-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  min-width: 160px;
+  text-align: center;
+}
+
+.today-btn, .refresh-btn, .signout-btn {
+  padding: 5px 12px;
+  border: 1px solid #ddd;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+  transition: background 0.1s;
+}
+.today-btn:hover, .signout-btn:hover { background: #f5f5f5; }
+
+.refresh-btn {
+  border-color: #1a73e8;
+  color: #1a73e8;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.refresh-btn:hover { background: #e8f0fe; }
+.refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.refresh-btn .spin { animation: spin 0.8s linear infinite; display: inline-block; }
+
+.signout-btn { color: #888; border-color: #e0e0e0; font-size: 12px; }
+
+.cal-toggles {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.cal-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  border: 2px solid transparent;
+  transition: all 0.15s;
+  user-select: none;
+}
+.cal-toggle.off {
+  opacity: 0.35;
+  filter: grayscale(0.4);
+}
+.dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── STATUS BAR ── */
+#status {
+  font-size: 12px;
+  color: #999;
+  padding: 3px 16px;
+  flex-shrink: 0;
+  display: none;
+}
+
+/* ── CALENDAR GRID ── */
+.cal-container {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+
+.cal-grid {
+  display: flex;
+  flex-direction: column;
+  min-width: fit-content;
+}
+
+/* Day header row */
+.day-header-row {
+  display: flex;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #fff;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.time-gutter-header {
+  width: var(--time-col-width);
+  flex-shrink: 0;
+  border-right: 1px solid #e0e0e0;
+}
+
+.day-col-header {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #e0e0e0;
+}
+.day-label {
+  padding: 8px 8px 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.day-number {
+  padding: 2px 8px 6px;
+  font-size: 22px;
+  font-weight: 700;
+  color: #1a1a1a;
+  line-height: 1;
+}
+.day-col-header.today .day-number {
+  color: #fff;
+  background: #1a73e8;
+  border-radius: 50%;
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  margin: 2px 8px 4px;
+  font-size: 18px;
+}
+
+/* Lane labels row */
+.lane-labels-row {
+  display: flex;
+  position: sticky;
+  top: var(--header-height);
+  z-index: 4;
+  background: #fafafa;
+  border-bottom: 1px solid #e0e0e0;
+}
+.time-gutter-spacer {
+  width: var(--time-col-width);
+  flex-shrink: 0;
+  border-right: 1px solid #e0e0e0;
+}
+.lane-labels-day {
+  flex: 1;
+  display: flex;
+  border-right: 1px solid #e0e0e0;
+}
+.lane-label {
+  flex: 1;
+  padding: 3px 4px;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  border-right: 1px solid #e8e8e8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lane-label:last-child { border-right: none; }
+
+/* Body */
+.cal-body { display: flex; position: relative; }
+
+.time-gutter {
+  width: var(--time-col-width);
+  flex-shrink: 0;
+  border-right: 1px solid #e0e0e0;
+}
+.time-slot {
+  height: var(--hour-height);
+  border-bottom: 1px solid #f0f0f0;
+  display: flex;
+  align-items: flex-start;
+  padding-top: 4px;
+  padding-right: 6px;
+  justify-content: flex-end;
+}
+.time-slot span { font-size: 10px; color: #aaa; font-weight: 500; }
+
+.days-area { flex: 1; display: flex; }
+
+.day-col {
+  flex: 1;
+  display: flex;
+  border-right: 1px solid #e0e0e0;
+  position: relative;
+}
+.today-col { background: #fffef0; }
+
+.hour-lines { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+.hour-line  { position: absolute; left: 0; right: 0; border-top: 1px solid #f0f0f0; }
+.hour-line.major { border-top-color: #e8e8e8; }
+.half-line  { position: absolute; left: 0; right: 0; border-top: 1px dashed #f5f5f5; }
+
+.lane-col {
+  flex: 1;
+  position: relative;
+  border-right: 1px solid #eeeeee;
+  min-width: var(--lane-min-width);
+}
+.lane-col:last-child { border-right: none; }
+
+/* Events */
+.event {
+  position: absolute;
+  border-radius: 6px;
+  padding: 3px 5px;
+  font-size: 11px;
+  font-weight: 600;
+  overflow: hidden;
+  cursor: default;
+  z-index: 2;
+  border-left: 3px solid transparent;
+  line-height: 1.3;
+  transition: box-shadow 0.15s;
+}
+.event:hover { box-shadow: 0 3px 10px rgba(0,0,0,0.2); z-index: 10; }
+.event .ev-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 18px; }
+.event .ev-time  { font-size: 10px; font-weight: 400; opacity: 0.8; margin-top: 1px; }
+.ev-copy-btn {
+  position: absolute;
+  top: 2px; right: 2px;
+  width: 16px; height: 16px;
+  border: none; background: transparent;
+  cursor: pointer;
+  padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+  color: inherit;
+  border-radius: 3px;
+  z-index: 3;
+}
+.event:hover .ev-copy-btn { opacity: 0.7; }
+.ev-copy-btn:hover { opacity: 1 !important; background: rgba(0,0,0,0.1); }
+.ev-copy-btn svg { width: 11px; height: 11px; }
+
+/* Now line */
+.now-line {
+  position: absolute;
+  left: 0; right: 0;
+  height: 2px;
+  background: #ea4335;
+  z-index: 3;
+  pointer-events: none;
+}
+.now-line::before {
+  content: '';
+  position: absolute;
+  left: -4px; top: -4px;
+  width: 10px; height: 10px;
+  background: #ea4335;
+  border-radius: 50%;
+}
+
+/* Tooltip */
+.tooltip {
+  position: fixed;
+  background: #2d2d2d;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 999;
+  max-width: 240px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  display: none;
+  line-height: 1.5;
+}
+
+/* Loading overlay */
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255,255,255,0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  font-size: 14px;
+  color: #666;
+  flex-direction: column;
+  gap: 12px;
+}
+.spinner {
+  width: 32px; height: 32px;
+  border: 3px solid #e0e0e0;
+  border-top-color: #1a73e8;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── DARK MODE ── */
+body.dark {
+  background: #1a1a2e;
+  color: #e0e0e0;
+}
+body.dark .topbar {
+  background: #16213e;
+  border-bottom-color: #2a2a4a;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+body.dark .topbar h1,
+body.dark #date-label { color: #e0e0e0; }
+body.dark .view-btns { background: #0f3460; }
+body.dark .view-btn { color: #aaa; }
+body.dark .view-btn.active { background: #1a1a2e; color: #e0e0e0; }
+body.dark .nav-btn {
+  background: #16213e;
+  border-color: #2a2a4a;
+  color: #ccc;
+}
+body.dark .nav-btn:hover { background: #0f3460; }
+body.dark .today-btn, body.dark .signout-btn {
+  background: #16213e;
+  border-color: #2a2a4a;
+  color: #ccc;
+}
+body.dark .today-btn:hover, body.dark .signout-btn:hover { background: #0f3460; }
+body.dark .refresh-btn { background: #16213e; }
+body.dark .refresh-btn:hover { background: #1a2a5e; }
+body.dark #auth-screen { background: #16213e; }
+body.dark #auth-screen h1 { color: #e0e0e0; }
+body.dark .day-header-row { background: #16213e; border-bottom-color: #2a2a4a; }
+body.dark .lane-labels-row { background: #1a1a2e; border-bottom-color: #2a2a4a; }
+body.dark .time-gutter-header,
+body.dark .time-gutter-spacer,
+body.dark .time-gutter { border-right-color: #2a2a4a; }
+body.dark .day-col-header { border-right-color: #2a2a4a; }
+body.dark .day-number { color: #e0e0e0; }
+body.dark .day-label { color: #888; }
+body.dark .day-col { border-right-color: #2a2a4a; }
+body.dark .today-col { background: #1e2a1e; }
+body.dark .hour-line, body.dark .hour-line.major { border-top-color: #2a2a3a; }
+body.dark .half-line { border-top-color: #22223a; }
+body.dark .time-slot { border-bottom-color: #2a2a3a; }
+body.dark .time-slot span { color: #555; }
+body.dark .lane-col { border-right-color: #2a2a3a; }
+body.dark .lane-labels-day { border-right-color: #2a2a4a; }
+body.dark .lane-label { border-right-color: #2a2a3a; }
+body.dark .loading-overlay { background: rgba(22,33,62,0.9); color: #ccc; }
+body.dark .spinner { border-color: #2a2a4a; border-top-color: #1a73e8; }
+
+/* ── EVENT MODAL ── */
+.modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 100;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+.modal-backdrop.open { display: flex; }
+.modal {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px;
+  width: 420px;
+  max-width: 95vw;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+body.dark .modal { background: #16213e; color: #e0e0e0; }
+.modal h2 { font-size: 16px; font-weight: 700; }
+.modal label { font-size: 12px; font-weight: 600; color: #666; display: block; margin-bottom: 4px; }
+body.dark .modal label { color: #aaa; }
+.modal input, .modal textarea, .modal select {
+  width: 100%;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  background: #fff;
+  color: #1a1a1a;
+}
+body.dark .modal input,
+body.dark .modal textarea,
+body.dark .modal select { background: #0f3460; border-color: #2a2a4a; color: #e0e0e0; }
+.modal textarea { resize: vertical; min-height: 60px; }
+.modal-row { display: flex; gap: 10px; }
+.modal-row > div { flex: 1; }
+.modal-actions { display: flex; gap: 8px; margin-top: 4px; }
+.btn-save {
+  flex: 1; padding: 8px; border: none; border-radius: 6px;
+  background: #1a73e8; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.btn-save:hover { background: #1557b0; }
+.btn-delete {
+  padding: 8px 14px; border: 1px solid #ea4335; border-radius: 6px;
+  background: transparent; color: #ea4335; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.btn-delete:hover { background: #fce8e6; }
+.btn-cancel {
+  padding: 8px 14px; border: 1px solid #ddd; border-radius: 6px;
+  background: transparent; color: #666; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.btn-cancel:hover { background: #f5f5f5; }
+body.dark .btn-cancel { border-color: #2a2a4a; color: #aaa; }
+body.dark .btn-cancel:hover { background: #0f3460; }
+
+/* ── DRAG REORDER ── */
+.cal-toggle { cursor: grab; }
+.cal-toggle.dragging { opacity: 0.5; cursor: grabbing; }
+.cal-toggle.drag-over { outline: 2px dashed currentColor; outline-offset: 2px; }
+
+/* ── DARK TOGGLE BTN ── */
+.dark-toggle-btn {
+  padding: 5px 10px;
+  border: 1px solid #ddd;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.1s;
+}
+.dark-toggle-btn:hover { background: #f5f5f5; }
+body.dark .dark-toggle-btn { background: #16213e; border-color: #2a2a4a; }
+body.dark .dark-toggle-btn:hover { background: #0f3460; }
+
+/* ── GEAR BTN ── */
+.gear-btn {
+  width: 30px; height: 30px;
+  border: 1px solid #ddd;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.1s;
+  flex-shrink: 0;
+}
+.gear-btn:hover { background: #f5f5f5; }
+body.dark .gear-btn { background: #16213e; border-color: #2a2a4a; color: #ccc; }
+body.dark .gear-btn:hover { background: #0f3460; }
+
+/* ── SETTINGS PANEL ── */
+.settings-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 200;
+  display: none;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 60px 16px 0;
+}
+.settings-backdrop.open { display: flex; }
+.settings-panel {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  width: 320px;
+  max-width: 95vw;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+body.dark .settings-panel { background: #16213e; color: #e0e0e0; }
+.settings-panel h2 { font-size: 15px; font-weight: 700; }
+.settings-section { display: flex; flex-direction: column; gap: 8px; }
+.settings-section h3 { font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+body.dark .settings-section h3 { color: #666; }
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+.settings-row:last-child { border-bottom: none; }
+body.dark .settings-row { border-bottom-color: #2a2a3a; }
+.settings-row span { font-size: 13px; }
+/* toggle switch */
+.toggle-switch { position: relative; width: 36px; height: 20px; flex-shrink: 0; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-switch .slider {
+  position: absolute; inset: 0;
+  background: #ccc;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.toggle-switch .slider::before {
+  content: '';
+  position: absolute;
+  width: 14px; height: 14px;
+  left: 3px; top: 3px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+.toggle-switch input:checked + .slider { background: #1a73e8; }
+.toggle-switch input:checked + .slider::before { transform: translateX(16px); }
+
+/* ── EVENT DRAG & RESIZE ── */
+.event.dragging-event { opacity: 0.5; }
+.event-ghost {
+  position: absolute;
+  border-radius: 6px;
+  pointer-events: none;
+  z-index: 50;
+  opacity: 0.75;
+  border-left: 3px solid transparent;
+}
+.resize-handle {
+  position: absolute;
+  left: 0; right: 0;
+  height: 6px;
+  cursor: ns-resize;
+  z-index: 5;
+}
+.resize-handle.top { top: 0; border-radius: 6px 6px 0 0; }
+.resize-handle.bottom { bottom: 0; border-radius: 0 0 6px 6px; }
+</style>
 </head>
 <body>
-<a href="better-multicalendar-view.html">Redirecting...</a>
+
+<!-- AUTH SCREEN (shown when not signed in) -->
+<div id="auth-screen">
+  <h1>Calendar View</h1>
+  <p>A clean multi-calendar view with separate lanes per calendar, day/3-day/week views, and toggle controls.</p>
+  <button class="signin-btn" id="signin-btn">
+    <!-- Google logo -->
+    <svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.08 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.35-8.16 2.35-6.26 0-11.57-3.59-13.46-8.83l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg>
+    Sign in with Google
+  </button>
+  <p class="config-hint" id="config-hint" style="display:none"></p>
+</div>
+
+<!-- MAIN APP (shown after sign-in) -->
+<div id="app">
+  <div class="topbar">
+    <h1>Calendar View</h1>
+
+    <div class="view-btns">
+      <button class="view-btn" data-view="1">Day</button>
+      <button class="view-btn active" data-view="3">3 Days</button>
+      <button class="view-btn" data-view="7">Week</button>
+    </div>
+
+    <div class="nav-btns">
+      <button class="nav-btn" id="prev-btn">&#8249;</button>
+      <button class="today-btn" id="today-btn">Today</button>
+      <button class="nav-btn" id="next-btn">&#8250;</button>
+    </div>
+
+    <div id="date-label"></div>
+
+    <button class="refresh-btn" id="refresh-btn">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      Refresh
+    </button>
+
+    <div class="cal-toggles" id="cal-toggles"></div>
+
+    <button class="dark-toggle-btn" id="dark-toggle-btn" title="Toggle dark mode">🌙</button>
+    <button class="gear-btn" id="gear-btn" title="Settings">⚙️</button>
+    <button class="signout-btn" id="signout-btn">Sign out</button>
+  </div>
+
+  <div id="status"></div>
+
+  <div class="cal-container" id="cal-container">
+    <div class="loading-overlay" id="loading">
+      <div class="spinner"></div>
+      <span id="loading-msg">Loading calendars…</span>
+    </div>
+    <div class="cal-grid" id="cal-grid"></div>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<!-- EVENT MODAL -->
+<div class="modal-backdrop" id="modal-backdrop">
+  <div class="modal">
+    <h2 id="modal-title">Edit Event</h2>
+    <div>
+      <label>Title</label>
+      <input type="text" id="modal-evt-title" placeholder="Event title">
+    </div>
+    <div class="modal-row">
+      <div>
+        <label>Start</label>
+        <input type="datetime-local" id="modal-evt-start">
+      </div>
+      <div>
+        <label>End</label>
+        <input type="datetime-local" id="modal-evt-end">
+      </div>
+    </div>
+    <div>
+      <label>Calendar</label>
+      <select id="modal-evt-cal"></select>
+    </div>
+    <div>
+      <label>Location</label>
+      <input type="text" id="modal-evt-location" placeholder="Location (optional)">
+    </div>
+    <div>
+      <label>Description</label>
+      <textarea id="modal-evt-desc" placeholder="Description (optional)"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-save" id="modal-save-btn">Save</button>
+      <button class="btn-delete" id="modal-delete-btn" style="display:none">Delete</button>
+      <button class="btn-cancel" id="modal-cancel-btn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS PANEL -->
+<div class="settings-backdrop" id="settings-backdrop">
+  <div class="settings-panel" id="settings-panel">
+    <h2>Settings</h2>
+
+    <div class="settings-section">
+      <h3>Calendars</h3>
+      <div id="settings-cal-list"></div>
+    </div>
+
+    <div class="settings-section">
+      <h3>Permissions</h3>
+      <div class="settings-row">
+        <span>Allow Add</span>
+        <label class="toggle-switch"><input type="checkbox" id="perm-add"><span class="slider"></span></label>
+      </div>
+      <div class="settings-row">
+        <span>Allow Edit</span>
+        <label class="toggle-switch"><input type="checkbox" id="perm-edit"><span class="slider"></span></label>
+      </div>
+      <div class="settings-row">
+        <span>Allow Move</span>
+        <label class="toggle-switch"><input type="checkbox" id="perm-move"><span class="slider"></span></label>
+      </div>
+      <div class="settings-row">
+        <span>Allow Delete</span>
+        <label class="toggle-switch"><input type="checkbox" id="perm-delete"><span class="slider"></span></label>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── CONFIG ────────────────────────────────────────────────────────────────────
+// Replace with your own OAuth 2.0 Client ID from Google Cloud Console.
+// Create one at: console.cloud.google.com → APIs & Services → Credentials
+// Type: Web application. Add your hosted URL (and http://localhost:PORT) as
+// Authorised redirect URIs.
+const CLIENT_ID = '593921280096-38ohg1bghcihdb4ctpfacg3e0sdd4rtg.apps.googleusercontent.com';
+const CLIENT_SECRET = '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';
+
+const SCOPES = 'https://www.googleapis.com/auth/calendar';
+const REDIRECT_URI = location.origin + location.pathname;
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let accessToken  = null;
+let tokenExpiry  = 0;
+let calendarList = [];           // [{id, summary, backgroundColor, foregroundColor}]
+let activeCalendars = new Set(); // set of calendar IDs visible in topbar/grid
+let enabledCalendars = new Set(); // set of calendar IDs enabled in settings (gates sync)
+let cachedEvents = {};           // calId -> [event, ...]
+let viewDays     = 3;
+let anchorDate   = startOfToday();
+let permissions  = { add: false, edit: false, move: false, delete: false };
+
+// ── PREFERENCES (localStorage) ───────────────────────────────────────────────
+const PREF_KEY = 'calview_prefs';
+function savePrefs() {
+  localStorage.setItem(PREF_KEY, JSON.stringify({
+    darkMode:         document.body.classList.contains('dark'),
+    viewDays,
+    calOrder:         calendarList.map(c => c.id),
+    activeCalendars:  [...activeCalendars],
+    enabledCalendars: [...enabledCalendars],
+    permissions,
+  }));
+}
+function loadPrefs() {
+  try { return JSON.parse(localStorage.getItem(PREF_KEY) || 'null'); } catch { return null; }
+}
+function applyDarkPref(dark) {
+  document.body.classList.toggle('dark', dark);
+  document.getElementById('dark-toggle-btn').textContent = dark ? '☀️' : '🌙';
+}
+
+// ── DATE HELPERS ──────────────────────────────────────────────────────────────
+function startOfToday() {
+  const d = new Date(); d.setHours(0,0,0,0); return d;
+}
+function addDays(d, n) {
+  const r = new Date(d); r.setDate(r.getDate() + n); return r;
+}
+function fmtDate(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+function fmtTime(d) {
+  return d.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', hour12:true });
+}
+function getViewStart() {
+  if (viewDays === 7) {
+    const d = new Date(anchorDate);
+    const diff = d.getDay() === 0 ? -6 : 1 - d.getDay();
+    d.setDate(d.getDate() + diff);
+    return d;
+  }
+  return new Date(anchorDate);
+}
+function isToday(d) { return fmtDate(d) === fmtDate(startOfToday()); }
+
+// ── OAUTH PKCE ────────────────────────────────────────────────────────────────
+function b64url(buf) {
+  return btoa(String.fromCharCode(...new Uint8Array(buf)))
+    .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+}
+async function generatePKCE() {
+  const verifier = b64url(crypto.getRandomValues(new Uint8Array(48)));
+  const challenge = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+  return { verifier, challenge };
+}
+
+async function startLogin() {
+  if (CLIENT_ID === 'YOUR_GOOGLE_OAUTH_CLIENT_ID') {
+    document.getElementById('config-hint').style.display = 'block';
+    document.getElementById('config-hint').innerHTML =
+      'Set your <code>CLIENT_ID</code> at the top of the &lt;script&gt; block in this HTML file. ' +
+      'Get one free at <a href="https://console.cloud.google.com" target="_blank">console.cloud.google.com</a>.';
+    return;
+  }
+  const { verifier, challenge } = await generatePKCE();
+  sessionStorage.setItem('pkce_verifier', verifier);
+  sessionStorage.setItem('pkce_redirect', location.href);
+
+  const params = new URLSearchParams({
+    client_id:             CLIENT_ID,
+    redirect_uri:          REDIRECT_URI,
+    response_type:         'code',
+    scope:                 SCOPES,
+    code_challenge:        challenge,
+    code_challenge_method: 'S256',
+    access_type:           'online',
+    prompt:                'consent',
+  });
+  location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params;
+}
+
+async function handleCallback(code) {
+  const verifier = sessionStorage.getItem('pkce_verifier');
+  if (!verifier) { showAuthScreen(); return; }
+  sessionStorage.removeItem('pkce_verifier');
+  // Clean the URL
+  history.replaceState({}, '', location.pathname);
+
+  setLoadingMsg('Signing in…');
+  try {
+    const resp = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id:     CLIENT_ID,
+        client_secret: CLIENT_SECRET,
+        code,
+        code_verifier: verifier,
+        grant_type:    'authorization_code',
+        redirect_uri:  REDIRECT_URI,
+      }),
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error_description || data.error);
+    storeToken(data.access_token, data.expires_in);
+    await initApp();
+  } catch (e) {
+    showAuthScreen('Sign-in failed: ' + e.message);
+  }
+}
+
+function storeToken(token, expiresIn) {
+  accessToken = token;
+  tokenExpiry = Date.now() + (expiresIn - 60) * 1000;
+  sessionStorage.setItem('access_token', token);
+  sessionStorage.setItem('token_expiry', tokenExpiry);
+}
+
+function loadStoredToken() {
+  const t = sessionStorage.getItem('access_token');
+  const e = parseInt(sessionStorage.getItem('token_expiry') || '0');
+  if (t && e > Date.now()) { accessToken = t; tokenExpiry = e; return true; }
+  return false;
+}
+
+function isTokenValid() { return accessToken && Date.now() < tokenExpiry; }
+
+async function apiGet(url) {
+  if (!isTokenValid()) {
+    sessionStorage.removeItem('access_token');
+    sessionStorage.removeItem('token_expiry');
+    showAuthScreen('Session expired — please sign in again.');
+    throw new Error('token_expired');
+  }
+  const resp = await fetch(url, { headers: { Authorization: 'Bearer ' + accessToken } });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error?.message || `HTTP ${resp.status}`);
+  }
+  return resp.json();
+}
+
+async function apiWrite(method, url, body) {
+  if (!isTokenValid()) {
+    sessionStorage.removeItem('access_token');
+    sessionStorage.removeItem('token_expiry');
+    showAuthScreen('Session expired — please sign in again.');
+    throw new Error('token_expired');
+  }
+  const opts = { method, headers: { Authorization: 'Bearer ' + accessToken } };
+  if (body !== undefined) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  }
+  const resp = await fetch(url, opts);
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error?.message || `HTTP ${resp.status}`);
+  }
+  if (resp.status === 204) return null;
+  return resp.json();
+}
+
+// ── CALENDAR LIST ─────────────────────────────────────────────────────────────
+async function fetchCalendarList() {
+  const data = await apiGet('https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=250');
+  return (data.items || []).filter(c => c.accessRole !== 'none');
+}
+
+// ── EVENTS ────────────────────────────────────────────────────────────────────
+async function fetchEvents(calId, timeMin, timeMax) {
+  const events = [];
+  let pageToken = '';
+  do {
+    const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events`);
+    url.searchParams.set('timeMin', timeMin);
+    url.searchParams.set('timeMax', timeMax);
+    url.searchParams.set('singleEvents', 'true');
+    url.searchParams.set('orderBy', 'startTime');
+    url.searchParams.set('maxResults', '500');
+    if (pageToken) url.searchParams.set('pageToken', pageToken);
+    const data = await apiGet(url.toString());
+    for (const ev of (data.items || [])) {
+      const start = ev.start?.dateTime || ev.start?.date;
+      const end   = ev.end?.dateTime   || ev.end?.date;
+      if (!start) continue;
+      events.push({
+        id:       ev.id,
+        calId,
+        title:    ev.summary || '(No title)',
+        start:    new Date(start),
+        end:      new Date(end),
+        desc:     ev.description || '',
+        location: ev.location || '',
+      });
+    }
+    pageToken = data.nextPageToken || '';
+  } while (pageToken);
+  return events;
+}
+
+async function loadAllEvents() {
+  const timeMin = addDays(anchorDate, -7).toISOString();
+  const timeMax = addDays(anchorDate, viewDays + 7).toISOString();
+
+  // Only sync calendars that are enabled in settings
+  const active = [...activeCalendars].filter(id => enabledCalendars.has(id));
+  const results = await Promise.allSettled(
+    active.map(id => fetchEvents(id, timeMin, timeMax))
+  );
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled') cachedEvents[active[i]] = r.value;
+    else { console.warn('Error fetching', active[i], r.reason); cachedEvents[active[i]] = []; }
+  });
+}
+
+// ── APP INIT ──────────────────────────────────────────────────────────────────
+async function initApp() {
+  showApp();
+  setLoadingMsg('Loading your calendars…');
+  showLoading(true);
+
+  try {
+    calendarList = await fetchCalendarList();
+  } catch (e) {
+    if (e.message === 'token_expired') return;
+    showLoading(false);
+    setStatus('Failed to load calendars: ' + e.message);
+    return;
+  }
+
+  // Restore preferences
+  const prefs = loadPrefs();
+  const allIds = calendarList.map(c => c.id);
+  if (prefs) {
+    enabledCalendars = new Set(
+      prefs.enabledCalendars
+        ? allIds.filter(id => prefs.enabledCalendars.includes(id))
+        : allIds
+    );
+    activeCalendars = new Set(
+      prefs.activeCalendars
+        ? allIds.filter(id => prefs.activeCalendars.includes(id) && enabledCalendars.has(id))
+        : [...enabledCalendars]
+    );
+    if (prefs.calOrder) {
+      const ordered = [];
+      prefs.calOrder.forEach(id => { const c = calendarList.find(x => x.id === id); if (c) ordered.push(c); });
+      calendarList.forEach(c => { if (!ordered.includes(c)) ordered.push(c); });
+      calendarList = ordered;
+    }
+    if (prefs.permissions) permissions = { ...permissions, ...prefs.permissions };
+  } else {
+    enabledCalendars = new Set(allIds);
+    activeCalendars  = new Set(allIds);
+  }
+  renderToggles();
+
+  await refreshEvents();
+}
+
+async function refreshEvents() {
+  setLoadingMsg('Fetching events…');
+  showLoading(true);
+  document.getElementById('refresh-btn').disabled = true;
+
+  try {
+    await loadAllEvents();
+  } catch (e) {
+    if (e.message === 'token_expired') return;
+    setStatus('Error: ' + e.message);
+  }
+
+  showLoading(false);
+  document.getElementById('refresh-btn').disabled = false;
+  setStatus('Updated ' + new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', hour12:true }));
+  renderGrid();
+}
+
+// ── TOGGLES ───────────────────────────────────────────────────────────────────
+let dragSrcCalId = null;
+
+function renderToggles() {
+  const container = document.getElementById('cal-toggles');
+  container.innerHTML = '';
+  calendarList.filter(c => enabledCalendars.has(c.id)).forEach(cal => {
+    const bg  = cal.backgroundColor || '#4285f4';
+    const pill = document.createElement('div');
+    pill.className = 'cal-toggle' + (activeCalendars.has(cal.id) ? '' : ' off');
+    pill.dataset.calId = cal.id;
+    pill.style.cssText = `background:${bg}22; color:${bg}; border-color:${bg};`;
+    pill.innerHTML = `<span class="dot" style="background:${bg}"></span>${escHtml(cal.summary)}`;
+
+    // Click to toggle visibility
+    pill.addEventListener('click', () => {
+      if (activeCalendars.has(cal.id)) {
+        activeCalendars.delete(cal.id);
+        pill.classList.add('off');
+      } else {
+        activeCalendars.add(cal.id);
+        pill.classList.remove('off');
+      }
+      savePrefs();
+      renderGrid();
+    });
+
+    // Drag to reorder
+    pill.draggable = true;
+    pill.addEventListener('dragstart', e => {
+      dragSrcCalId = cal.id;
+      pill.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    pill.addEventListener('dragend', () => {
+      pill.classList.remove('dragging');
+      container.querySelectorAll('.cal-toggle').forEach(p => p.classList.remove('drag-over'));
+    });
+    pill.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (cal.id !== dragSrcCalId) pill.classList.add('drag-over');
+    });
+    pill.addEventListener('dragleave', () => pill.classList.remove('drag-over'));
+    pill.addEventListener('drop', e => {
+      e.preventDefault();
+      pill.classList.remove('drag-over');
+      if (!dragSrcCalId || dragSrcCalId === cal.id) return;
+      const srcIdx  = calendarList.findIndex(c => c.id === dragSrcCalId);
+      const destIdx = calendarList.findIndex(c => c.id === cal.id);
+      if (srcIdx === -1 || destIdx === -1) return;
+      const [moved] = calendarList.splice(srcIdx, 1);
+      calendarList.splice(destIdx, 0, moved);
+      savePrefs();
+      renderToggles();
+      renderGrid();
+    });
+
+    container.appendChild(pill);
+  });
+}
+
+// ── RENDER ────────────────────────────────────────────────────────────────────
+const DAY_ABBR  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const DAY_FULL  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const MONTH_ABR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const START_HOUR = 7;
+const END_HOUR   = 20;
+const TOTAL_HRS  = END_HOUR - START_HOUR;
+
+function layoutEvents(events) {
+  if (!events.length) return [];
+  const sorted = [...events].sort((a, b) => {
+    const d = a.start - b.start;
+    return d !== 0 ? d : (b.end - b.start) - (a.end - a.start);
+  });
+  const result = sorted.map(ev => ({ ev, col: 0, numCols: 1 }));
+  let i = 0;
+  while (i < sorted.length) {
+    let clusterEnd = sorted[i].end;
+    let j = i + 1;
+    while (j < sorted.length && sorted[j].start < clusterEnd) {
+      if (sorted[j].end > clusterEnd) clusterEnd = sorted[j].end;
+      j++;
+    }
+    const cluster = result.slice(i, j);
+    const cols = [];
+    cluster.forEach(item => {
+      let placed = false;
+      for (let c = 0; c < cols.length; c++) {
+        if (item.ev.start >= cols[c]) { item.col = c; cols[c] = item.ev.end; placed = true; break; }
+      }
+      if (!placed) { item.col = cols.length; cols.push(item.ev.end); }
+    });
+    cluster.forEach(item => { item.numCols = cols.length; });
+    i = j;
+  }
+  return result;
+}
+
+function renderGrid() {
+  const grid = document.getElementById('cal-grid');
+  grid.innerHTML = '';
+
+  const activeCals = calendarList.filter(c => activeCalendars.has(c.id));
+  if (!activeCals.length) {
+    grid.innerHTML = '<div style="padding:40px;text-align:center;color:#999">Toggle on at least one calendar above.</div>';
+    updateDateLabel();
+    return;
+  }
+
+  const viewStart = getViewStart();
+  const days = Array.from({ length: viewDays }, (_, i) => addDays(viewStart, i));
+  updateDateLabel(days);
+
+  const hourPx  = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--hour-height')) || 64;
+  const pxPerMin = hourPx / 60;
+
+  // Day header row
+  const hRow = document.createElement('div');
+  hRow.className = 'day-header-row';
+  hRow.style.height = 'var(--header-height)';
+  hRow.appendChild(el('div', 'time-gutter-header'));
+  days.forEach(d => {
+    const dh = el('div', 'day-col-header' + (isToday(d) ? ' today' : ''));
+    dh.innerHTML = `<div class="day-label">${DAY_ABBR[d.getDay()]}</div><div class="day-number">${d.getDate()}</div>`;
+    hRow.appendChild(dh);
+  });
+  grid.appendChild(hRow);
+
+  // Lane labels row
+  const llRow = document.createElement('div');
+  llRow.className = 'lane-labels-row';
+  llRow.appendChild(el('div', 'time-gutter-spacer'));
+  days.forEach(() => {
+    const lld = el('div', 'lane-labels-day');
+    activeCals.forEach(cal => {
+      const ll = el('div', 'lane-label');
+      ll.textContent = cal.summary;
+      ll.style.color      = cal.backgroundColor || '#4285f4';
+      ll.style.background = (cal.backgroundColor || '#4285f4') + '18';
+      lld.appendChild(ll);
+    });
+    llRow.appendChild(lld);
+  });
+  grid.appendChild(llRow);
+
+  // Body
+  const body = el('div', 'cal-body');
+
+  // Time gutter
+  const tg = el('div', 'time-gutter');
+  for (let h = START_HOUR; h <= END_HOUR; h++) {
+    const ts = el('div', 'time-slot');
+    if (h < END_HOUR) {
+      const lbl = h === 12 ? '12 PM' : h > 12 ? `${h-12} PM` : `${h} AM`;
+      ts.innerHTML = `<span>${lbl}</span>`;
+    }
+    tg.appendChild(ts);
+  }
+  body.appendChild(tg);
+
+  // Days area
+  const daysArea = el('div', 'days-area');
+  days.forEach(d => {
+    const dayCol = el('div', 'day-col' + (isToday(d) ? ' today-col' : ''));
+    const totalH = TOTAL_HRS * hourPx;
+    dayCol.style.minHeight = totalH + 'px';
+
+    // Hour lines
+    const hl = el('div', 'hour-lines');
+    for (let h = 0; h < TOTAL_HRS; h++) {
+      const line = el('div', 'hour-line major'); line.style.top = (h * hourPx) + 'px'; hl.appendChild(line);
+      const half = el('div', 'half-line');       half.style.top = (h * hourPx + hourPx/2) + 'px'; hl.appendChild(half);
+    }
+    dayCol.appendChild(hl);
+
+    // Now line
+    if (isToday(d)) {
+      const now = new Date();
+      const nowMins = (now.getHours() - START_HOUR) * 60 + now.getMinutes();
+      if (nowMins >= 0 && nowMins <= TOTAL_HRS * 60) {
+        const nl = el('div', 'now-line'); nl.style.top = (nowMins * pxPerMin) + 'px'; dayCol.appendChild(nl);
+      }
+    }
+
+    // Lane columns
+    activeCals.forEach(cal => {
+      const lane = el('div', 'lane-col');
+      lane.style.minHeight = totalH + 'px';
+
+      if (permissions.add) {
+        lane.addEventListener('click', e => {
+          const rect = lane.getBoundingClientRect();
+          const clickY = e.clientY - rect.top;
+          const mins = Math.round((clickY / pxPerMin) / 15) * 15;
+          const startDate = new Date(d);
+          startDate.setHours(START_HOUR, 0, 0, 0);
+          startDate.setMinutes(startDate.getMinutes() + mins);
+          const endDate = new Date(startDate);
+          endDate.setMinutes(endDate.getMinutes() + 60);
+          openCreateModal(cal.id, startDate, endDate);
+        });
+      }
+
+      const events = (cachedEvents[cal.id] || []).filter(ev => fmtDate(ev.start) === fmtDate(d));
+      const laid = layoutEvents(events);
+      const color = cal.backgroundColor || '#4285f4';
+
+      laid.forEach(({ ev, col, numCols }) => {
+        const startMins = (ev.start.getHours() - START_HOUR) * 60 + ev.start.getMinutes();
+        const endMins   = (ev.end.getHours()   - START_HOUR) * 60 + ev.end.getMinutes();
+        const top    = Math.max(0, startMins * pxPerMin);
+        const height = Math.max(20, (endMins - startMins) * pxPerMin - 2);
+
+        const evEl = el('div', 'event');
+        evEl.style.top             = top + 'px';
+        evEl.style.height          = height + 'px';
+        evEl.style.background      = color + '22';
+        evEl.style.color           = color;
+        evEl.style.borderLeftColor = color;
+
+        const g = 2, pct = 100 / numCols;
+        evEl.style.left  = `calc(${col * pct}% + ${g}px)`;
+        evEl.style.width = `calc(${pct}% - ${g * 2}px)`;
+
+        const dur = endMins - startMins;
+        evEl.innerHTML = dur >= 30
+          ? `<div class="ev-title">${escHtml(ev.title)}</div><div class="ev-time">${fmtTime(ev.start)}–${fmtTime(ev.end)}</div>`
+          : `<div class="ev-title">${escHtml(ev.title)}</div>`;
+
+        // Copy button
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'ev-copy-btn';
+        copyBtn.title = 'Copy reminder message';
+        copyBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="9" height="11" rx="1.5"/><path d="M3 4H2a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1"/></svg>';
+        const getAllDayEvsForChild = () => {
+          // Gather events from ALL calendars for this day, then filter to this child
+          const dateStr = fmtDate(d);
+          const allEvs = Object.values(cachedEvents).flat().filter(x => fmtDate(x.start) === dateStr);
+          return buildReminderMessage(ev, d, allEvs);
+        };
+        copyBtn.addEventListener('mouseenter', e => {
+          e.stopPropagation();
+          showTooltip(e, null, null, getAllDayEvsForChild());
+        });
+        copyBtn.addEventListener('mousemove', e => { e.stopPropagation(); moveTooltip(e); });
+        copyBtn.addEventListener('mouseleave', e => { e.stopPropagation(); hideTooltip(); });
+        copyBtn.addEventListener('click', e => {
+          e.stopPropagation();
+          copyToClipboard(copyBtn, getAllDayEvsForChild());
+        });
+        evEl.appendChild(copyBtn);
+
+        evEl.addEventListener('mouseenter', e => showTooltip(e, ev, cal));
+        evEl.addEventListener('mousemove',  e => moveTooltip(e));
+        evEl.addEventListener('mouseleave', hideTooltip);
+        if (permissions.edit) {
+          evEl.addEventListener('click', e => { e.stopPropagation(); hideTooltip(); openEditModal(ev); });
+          evEl.style.cursor = 'pointer';
+        }
+        attachEventInteraction(evEl, ev, cal, lane, d, pxPerMin);
+        lane.appendChild(evEl);
+      });
+
+      dayCol.appendChild(lane);
+    });
+    daysArea.appendChild(dayCol);
+  });
+
+  body.appendChild(daysArea);
+  grid.appendChild(body);
+
+  // Scroll to 8 AM
+  const container = document.getElementById('cal-container');
+  container.scrollTop = (8 - START_HOUR) * 60 * pxPerMin + 86;
+}
+
+// ── TOOLTIP ───────────────────────────────────────────────────────────────────
+const tooltipEl = document.getElementById('tooltip');
+function showTooltip(e, ev, cal, plainText) {
+  if (plainText !== undefined) {
+    tooltipEl.innerHTML = `<pre style="margin:0;font-family:inherit;font-size:11px;white-space:pre-wrap">${escHtml(plainText)}</pre>`;
+  } else {
+    tooltipEl.innerHTML = `
+      <strong>${escHtml(ev.title)}</strong><br>
+      <span style="opacity:0.75">${escHtml(cal.summary)}</span><br>
+      ${fmtTime(ev.start)} – ${fmtTime(ev.end)}
+      ${ev.location ? `<br>📍 ${escHtml(ev.location)}` : ''}
+      ${ev.desc     ? `<br><span style="opacity:0.7;font-size:11px">${escHtml(ev.desc.slice(0,100))}</span>` : ''}
+    `;
+  }
+  tooltipEl.style.display = 'block';
+  moveTooltip(e);
+}
+function moveTooltip(e) {
+  let x = e.clientX + 16, y = e.clientY - 8;
+  if (x + 260 > window.innerWidth) x = e.clientX - 270;
+  tooltipEl.style.left = x + 'px';
+  tooltipEl.style.top  = y + 'px';
+}
+function hideTooltip() { tooltipEl.style.display = 'none'; }
+
+// ── UI HELPERS ────────────────────────────────────────────────────────────────
+function el(tag, cls) { const e = document.createElement(tag); if (cls) e.className = cls; return e; }
+
+function parseEventTitle(title) {
+  // "ChildName - TherapyType" or "ChildName - TherapyType - Extra"
+  // Returns { childName, therapyType }
+  const parts = title.split(' - ');
+  return {
+    childName:   parts[0]?.trim() || title,
+    therapyType: parts[1]?.trim() || title,
+  };
+}
+
+function buildReminderMessage(clickedEv, dayDate, allDayEvents) {
+  const pad = n => String(n).padStart(2, '0');
+  const { childName } = parseEventTitle(clickedEv.title);
+
+  // Header date label
+  const dayAbbr = DAY_ABBR[dayDate.getDay()];
+  const d       = dayDate.getDate();
+  const monAbbr = MONTH_ABR[dayDate.getMonth()];
+
+  // "today" / "tomorrow" / "on {DayAbbr}, {D} {Mon}"
+  const today    = startOfToday();
+  const tomorrow = addDays(today, 1);
+  const dayFmt   = fmtDate(dayDate);
+  let whenWord;
+  if      (dayFmt === fmtDate(today))    whenWord = `today (${dayAbbr}, ${d} ${monAbbr})`;
+  else if (dayFmt === fmtDate(tomorrow)) whenWord = `tomorrow (${dayAbbr}, ${d} ${monAbbr})`;
+  else                                   whenWord = `on ${dayAbbr}, ${d} ${monAbbr}`;
+
+  // Collect only this child's events for the day, in order
+  const childEvs = allDayEvents
+    .filter(ev => parseEventTitle(ev.title).childName === childName)
+    .sort((a, b) => a.start - b.start);
+
+  const lines = childEvs.map(ev => {
+    const h    = ev.start.getHours();
+    const m    = pad(ev.start.getMinutes());
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12  = pad(h % 12 || 12);
+    const { therapyType } = parseEventTitle(ev.title);
+    return `${h12}:${m} ${ampm} - ${therapyType}`;
+  }).join('\n');
+
+  return `Hi! ${childName}'s sessions ${whenWord}:\n\n${lines}\n\nSee you!`;
+}
+
+async function copyToClipboard(btn, text) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;top:-999px;left:-999px';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 8 6 12 14 4"/></svg>';
+    setTimeout(() => { btn.innerHTML = orig; }, 1500);
+  } catch (e) {
+    alert('Copy failed: ' + e.message);
+  }
+}
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function showApp()        { document.getElementById('auth-screen').style.display = 'none';  document.getElementById('app').style.display = 'flex'; }
+function showAuthScreen(msg) {
+  document.getElementById('auth-screen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  if (msg) { const h = document.getElementById('config-hint'); h.style.display='block'; h.textContent = msg; }
+}
+function showLoading(on)  { document.getElementById('loading').style.display = on ? 'flex' : 'none'; }
+function setLoadingMsg(m) { document.getElementById('loading-msg').textContent = m; }
+function setStatus(msg)   {
+  const s = document.getElementById('status');
+  s.textContent = msg; s.style.display = msg ? 'block' : 'none';
+}
+
+function updateDateLabel(days) {
+  const label = document.getElementById('date-label');
+  if (!days) { label.textContent = ''; return; }
+  const first = days[0], last = days[days.length-1];
+  if (viewDays === 1) {
+    label.textContent = `${DAY_FULL[first.getDay()]}, ${MONTH_ABR[first.getMonth()]} ${first.getDate()}, ${first.getFullYear()}`;
+  } else if (first.getMonth() === last.getMonth()) {
+    label.textContent = `${MONTH_ABR[first.getMonth()]} ${first.getDate()}–${last.getDate()}, ${first.getFullYear()}`;
+  } else {
+    label.textContent = `${MONTH_ABR[first.getMonth()]} ${first.getDate()} – ${MONTH_ABR[last.getMonth()]} ${last.getDate()}, ${last.getFullYear()}`;
+  }
+}
+
+// ── MODAL ─────────────────────────────────────────────────────────────────────
+let modalMode = null; // 'edit' | 'create'
+let modalEventRef = null; // existing event object (edit mode)
+
+function toLocalDatetimeValue(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function populateCalSelect(selectedCalId) {
+  const sel = document.getElementById('modal-evt-cal');
+  sel.innerHTML = '';
+  calendarList.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.summary;
+    if (c.id === selectedCalId) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function openEditModal(ev) {
+  modalMode = 'edit';
+  modalEventRef = ev;
+  document.getElementById('modal-title').textContent = 'Edit Event';
+  document.getElementById('modal-evt-title').value    = ev.title === '(No title)' ? '' : ev.title;
+  document.getElementById('modal-evt-start').value   = toLocalDatetimeValue(ev.start);
+  document.getElementById('modal-evt-end').value     = toLocalDatetimeValue(ev.end);
+  document.getElementById('modal-evt-location').value = ev.location || '';
+  document.getElementById('modal-evt-desc').value    = ev.desc || '';
+  document.getElementById('modal-delete-btn').style.display = permissions.delete ? '' : 'none';
+  populateCalSelect(ev.calId);
+  document.getElementById('modal-backdrop').classList.add('open');
+}
+
+function openCreateModal(calId, startDate, endDate) {
+  modalMode = 'create';
+  modalEventRef = null;
+  document.getElementById('modal-title').textContent = 'New Event';
+  document.getElementById('modal-evt-title').value    = '';
+  document.getElementById('modal-evt-start').value   = toLocalDatetimeValue(startDate);
+  document.getElementById('modal-evt-end').value     = toLocalDatetimeValue(endDate);
+  document.getElementById('modal-evt-location').value = '';
+  document.getElementById('modal-evt-desc').value    = '';
+  document.getElementById('modal-delete-btn').style.display = 'none';
+  populateCalSelect(calId);
+  document.getElementById('modal-backdrop').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modal-backdrop').classList.remove('open');
+  modalMode = null;
+  modalEventRef = null;
+}
+
+async function saveModal() {
+  const title    = document.getElementById('modal-evt-title').value.trim() || '(No title)';
+  const startVal = document.getElementById('modal-evt-start').value;
+  const endVal   = document.getElementById('modal-evt-end').value;
+  const location = document.getElementById('modal-evt-location').value.trim();
+  const desc     = document.getElementById('modal-evt-desc').value.trim();
+  const calId    = document.getElementById('modal-evt-cal').value;
+
+  if (!startVal || !endVal) { alert('Please set start and end times.'); return; }
+
+  const startDt = new Date(startVal);
+  const endDt   = new Date(endVal);
+  if (endDt <= startDt) { alert('End must be after start.'); return; }
+
+  // Produce "2026-04-02T10:00:00+05:30" — local time with offset, not UTC
+  function toOffsetISO(d) {
+    const off = -d.getTimezoneOffset();
+    const sign = off >= 0 ? '+' : '-';
+    const pad = n => String(Math.abs(n)).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00${sign}${pad(Math.floor(Math.abs(off)/60))}:${pad(Math.abs(off)%60)}`;
+  }
+
+  const body = {
+    summary:     title,
+    start:       { dateTime: toOffsetISO(startDt) },
+    end:         { dateTime: toOffsetISO(endDt) },
+    description: desc || undefined,
+    location:    location || undefined,
+  };
+
+  const saveBtn = document.getElementById('modal-save-btn');
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'Saving…';
+
+  try {
+    if (modalMode === 'create') {
+      const created = await apiWrite('POST',
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events`,
+        body
+      );
+      const start = created.start?.dateTime || created.start?.date;
+      const end   = created.end?.dateTime   || created.end?.date;
+      if (!cachedEvents[calId]) cachedEvents[calId] = [];
+      cachedEvents[calId].push({
+        id: created.id, calId,
+        title: created.summary || '(No title)',
+        start: new Date(start), end: new Date(end),
+        desc: created.description || '', location: created.location || '',
+      });
+    } else {
+      const origCalId = modalEventRef.calId;
+      if (calId !== origCalId) {
+        // Moving to a different calendar: create in destination, then delete from source.
+        // Use ?sendUpdates=none to avoid notification spam.
+        // Always target a single occurrence — never touch the recurrence master.
+        const created = await apiWrite('POST',
+          `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events?sendUpdates=none`,
+          body
+        );
+        await apiWrite('DELETE',
+          `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(origCalId)}/events/${encodeURIComponent(modalEventRef.id)}?sendUpdates=none`
+        );
+        // Update cache
+        cachedEvents[origCalId] = (cachedEvents[origCalId] || []).filter(e => e.id !== modalEventRef.id);
+        if (!cachedEvents[calId]) cachedEvents[calId] = [];
+        const cs = created.start?.dateTime || created.start?.date;
+        const ce = created.end?.dateTime   || created.end?.date;
+        cachedEvents[calId].push({
+          id: created.id, calId,
+          title: created.summary || '(No title)',
+          start: new Date(cs), end: new Date(ce),
+          desc: created.description || '', location: created.location || '',
+        });
+      } else {
+        const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(origCalId)}/events/${encodeURIComponent(modalEventRef.id)}`;
+        const updated = await apiWrite('PATCH', url, body);
+        const start = updated.start?.dateTime || updated.start?.date;
+        const end   = updated.end?.dateTime   || updated.end?.date;
+        const idx = (cachedEvents[origCalId] || []).findIndex(e => e.id === modalEventRef.id);
+        if (idx !== -1) {
+          cachedEvents[origCalId][idx] = {
+            id: updated.id, calId: origCalId,
+            title: updated.summary || '(No title)',
+            start: new Date(start), end: new Date(end),
+            desc: updated.description || '', location: updated.location || '',
+          };
+        }
+      }
+    }
+    closeModal();
+    renderGrid();
+  } catch (e) {
+    alert('Save failed: ' + e.message);
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Save';
+  }
+}
+
+async function deleteModal() {
+  if (!modalEventRef) return;
+  if (!confirm(`Delete "${modalEventRef.title}"?`)) return;
+
+  const deleteBtn = document.getElementById('modal-delete-btn');
+  deleteBtn.disabled = true;
+  deleteBtn.textContent = 'Deleting…';
+
+  try {
+    await apiWrite('DELETE',
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(modalEventRef.calId)}/events/${encodeURIComponent(modalEventRef.id)}`
+    );
+    const arr = cachedEvents[modalEventRef.calId] || [];
+    cachedEvents[modalEventRef.calId] = arr.filter(e => e.id !== modalEventRef.id);
+    closeModal();
+    renderGrid();
+  } catch (e) {
+    alert('Delete failed: ' + e.message);
+  } finally {
+    deleteBtn.disabled = false;
+    deleteBtn.textContent = 'Delete';
+  }
+}
+
+// ── SETTINGS PANEL ────────────────────────────────────────────────────────────
+function openSettings() {
+  // Populate calendar list
+  const list = document.getElementById('settings-cal-list');
+  list.innerHTML = '';
+  calendarList.forEach(cal => {
+    const bg = cal.backgroundColor || '#4285f4';
+    const row = document.createElement('div');
+    row.className = 'settings-row';
+    const id = 'settings-cal-' + cal.id.replace(/[^a-z0-9]/gi, '_');
+    row.innerHTML = `
+      <span style="display:flex;align-items:center;gap:6px">
+        <span style="width:8px;height:8px;border-radius:50%;background:${bg};flex-shrink:0;display:inline-block"></span>
+        ${escHtml(cal.summary)}
+      </span>
+      <label class="toggle-switch">
+        <input type="checkbox" id="${id}" ${enabledCalendars.has(cal.id) ? 'checked' : ''}>
+        <span class="slider"></span>
+      </label>`;
+    row.querySelector('input').addEventListener('change', e => {
+      if (e.target.checked) {
+        enabledCalendars.add(cal.id);
+        activeCalendars.add(cal.id);
+      } else {
+        enabledCalendars.delete(cal.id);
+        activeCalendars.delete(cal.id);
+        delete cachedEvents[cal.id];
+      }
+      savePrefs();
+      renderToggles();
+      renderGrid();
+    });
+    list.appendChild(row);
+  });
+
+  // Populate permissions
+  document.getElementById('perm-add').checked    = permissions.add;
+  document.getElementById('perm-edit').checked   = permissions.edit;
+  document.getElementById('perm-move').checked   = permissions.move;
+  document.getElementById('perm-delete').checked = permissions.delete;
+
+  document.getElementById('settings-backdrop').classList.add('open');
+}
+
+function closeSettings() {
+  document.getElementById('settings-backdrop').classList.remove('open');
+}
+
+['add','edit','move','delete'].forEach(p => {
+  document.getElementById('perm-' + p).addEventListener('change', e => {
+    permissions[p] = e.target.checked;
+    savePrefs();
+    renderGrid(); // re-render to add/remove handles and click handlers
+  });
+});
+
+// ── DRAG-TO-MOVE & RESIZE ─────────────────────────────────────────────────────
+let dragState = null; // { type:'move'|'resize-top'|'resize-bottom', ev, calColor, laneEl, dayDate, origStart, origEnd, ghostEl, origTop, origHeight, pxPerMin }
+
+function snapToQuarter(mins) { return Math.round(mins / 15) * 15; }
+
+function attachEventInteraction(evEl, ev, cal, laneEl, d, pxPerMin) {
+  const color = cal.backgroundColor || '#4285f4';
+
+  if (permissions.move) {
+    evEl.addEventListener('mousedown', e => {
+      if (e.target.classList.contains('resize-handle')) return;
+      e.preventDefault(); e.stopPropagation();
+      hideTooltip();
+      startDrag('move', e, ev, color, laneEl, d, pxPerMin, evEl);
+    });
+  }
+
+  if (permissions.edit) {
+    const topHandle = document.createElement('div');
+    topHandle.className = 'resize-handle top';
+    const botHandle = document.createElement('div');
+    botHandle.className = 'resize-handle bottom';
+    evEl.appendChild(topHandle);
+    evEl.appendChild(botHandle);
+
+    topHandle.addEventListener('mousedown', e => {
+      e.preventDefault(); e.stopPropagation();
+      startDrag('resize-top', e, ev, color, laneEl, d, pxPerMin, evEl);
+    });
+    botHandle.addEventListener('mousedown', e => {
+      e.preventDefault(); e.stopPropagation();
+      startDrag('resize-bottom', e, ev, color, laneEl, d, pxPerMin, evEl);
+    });
+  }
+}
+
+function startDrag(type, e, ev, color, laneEl, d, pxPerMin, evEl) {
+  const laneRect = laneEl.getBoundingClientRect();
+  const startMins = (ev.start.getHours() - START_HOUR) * 60 + ev.start.getMinutes();
+  const endMins   = (ev.end.getHours()   - START_HOUR) * 60 + ev.end.getMinutes();
+  const top    = startMins * pxPerMin;
+  const height = Math.max(20, (endMins - startMins) * pxPerMin - 2);
+
+  // Create ghost
+  const ghost = document.createElement('div');
+  ghost.className = 'event-ghost';
+  ghost.style.cssText = `top:${top}px;height:${height}px;left:${evEl.style.left};width:${evEl.style.width};background:${color}44;border-left-color:${color};color:${color};`;
+  ghost.innerHTML = evEl.innerHTML;
+  laneEl.appendChild(ghost);
+
+  evEl.classList.add('dragging-event');
+
+  dragState = {
+    type, ev, color, laneEl, laneRect, dayDate: d, pxPerMin,
+    evEl, ghostEl: ghost,
+    origTop: top, origHeight: height,
+    origStartMins: startMins, origEndMins: endMins,
+    mouseStartY: e.clientY,
+  };
+}
+
+document.addEventListener('mousemove', e => {
+  if (!dragState) return;
+  const { type, laneRect, origTop, origHeight, origStartMins, origEndMins, pxPerMin, ghostEl } = dragState;
+  const dy = e.clientY - dragState.mouseStartY;
+  const deltaMins = snapToQuarter(dy / pxPerMin);
+
+  if (type === 'move') {
+    const newStartMins = Math.max(0, Math.min(origStartMins + deltaMins, TOTAL_HRS * 60 - 15));
+    const dur = origEndMins - origStartMins;
+    const newEndMins = newStartMins + dur;
+    ghostEl.style.top    = (newStartMins * pxPerMin) + 'px';
+    ghostEl.style.height = Math.max(20, dur * pxPerMin - 2) + 'px';
+    ghostEl.innerHTML = `<div class="ev-title">${escHtml(dragState.ev.title)}</div><div class="ev-time">${minsToTimeStr(newStartMins)}–${minsToTimeStr(newEndMins)}</div>`;
+  } else if (type === 'resize-top') {
+    const newStartMins = Math.max(0, Math.min(origStartMins + deltaMins, origEndMins - 15));
+    ghostEl.style.top    = (newStartMins * pxPerMin) + 'px';
+    ghostEl.style.height = Math.max(20, (origEndMins - newStartMins) * pxPerMin - 2) + 'px';
+    ghostEl.innerHTML = `<div class="ev-title">${escHtml(dragState.ev.title)}</div><div class="ev-time">${minsToTimeStr(newStartMins)}–${minsToTimeStr(origEndMins)}</div>`;
+  } else if (type === 'resize-bottom') {
+    const newEndMins = Math.max(origStartMins + 15, Math.min(origEndMins + deltaMins, TOTAL_HRS * 60));
+    ghostEl.style.height = Math.max(20, (newEndMins - origStartMins) * pxPerMin - 2) + 'px';
+    ghostEl.innerHTML = `<div class="ev-title">${escHtml(dragState.ev.title)}</div><div class="ev-time">${minsToTimeStr(origStartMins)}–${minsToTimeStr(newEndMins)}</div>`;
+  }
+});
+
+document.addEventListener('mouseup', async e => {
+  if (!dragState) return;
+  const { type, ev, laneEl, dayDate, pxPerMin, ghostEl, evEl, origStartMins, origEndMins } = dragState;
+  const dy = e.clientY - dragState.mouseStartY;
+  const deltaMins = snapToQuarter(dy / pxPerMin);
+  dragState = null;
+
+  ghostEl.remove();
+  evEl.classList.remove('dragging-event');
+
+  let newStartMins, newEndMins;
+  if (type === 'move') {
+    newStartMins = Math.max(0, Math.min(origStartMins + deltaMins, TOTAL_HRS * 60 - 15));
+    newEndMins   = newStartMins + (origEndMins - origStartMins);
+  } else if (type === 'resize-top') {
+    newStartMins = Math.max(0, Math.min(origStartMins + deltaMins, origEndMins - 15));
+    newEndMins   = origEndMins;
+  } else {
+    newStartMins = origStartMins;
+    newEndMins   = Math.max(origStartMins + 15, Math.min(origEndMins + deltaMins, TOTAL_HRS * 60));
+  }
+
+  if (newStartMins === origStartMins && newEndMins === origEndMins) return; // no change
+
+  const newStart = new Date(dayDate);
+  newStart.setHours(START_HOUR, 0, 0, 0);
+  newStart.setMinutes(newStart.getMinutes() + newStartMins);
+  const newEnd = new Date(dayDate);
+  newEnd.setHours(START_HOUR, 0, 0, 0);
+  newEnd.setMinutes(newEnd.getMinutes() + newEndMins);
+
+  // Optimistic update
+  ev.start = newStart;
+  ev.end   = newEnd;
+  renderGrid();
+
+  try {
+    function toOffsetISO2(d) {
+      const off = -d.getTimezoneOffset();
+      const sign = off >= 0 ? '+' : '-';
+      const pad = n => String(Math.abs(n)).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00${sign}${pad(Math.floor(Math.abs(off)/60))}:${pad(Math.abs(off)%60)}`;
+    }
+    await apiWrite('PATCH',
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(ev.calId)}/events/${encodeURIComponent(ev.id)}`,
+      { start: { dateTime: toOffsetISO2(newStart) }, end: { dateTime: toOffsetISO2(newEnd) } }
+    );
+  } catch (err) {
+    // Revert on failure
+    ev.start = new Date(dayDate); ev.start.setHours(START_HOUR,0,0,0); ev.start.setMinutes(origStartMins);
+    ev.end   = new Date(dayDate); ev.end.setHours(START_HOUR,0,0,0);   ev.end.setMinutes(origEndMins);
+    renderGrid();
+    alert('Update failed: ' + err.message);
+  }
+});
+
+function minsToTimeStr(mins) {
+  const h = Math.floor(mins / 60) + START_HOUR;
+  const m = mins % 60;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
+}
+
+// ── EVENT HANDLERS ────────────────────────────────────────────────────────────
+document.getElementById('dark-toggle-btn').addEventListener('click', () => {
+  const isDark = document.body.classList.toggle('dark');
+  document.getElementById('dark-toggle-btn').textContent = isDark ? '☀️' : '🌙';
+  savePrefs();
+});
+document.getElementById('modal-save-btn').addEventListener('click', saveModal);
+document.getElementById('modal-delete-btn').addEventListener('click', deleteModal);
+document.getElementById('modal-cancel-btn').addEventListener('click', closeModal);
+document.getElementById('modal-backdrop').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+document.getElementById('gear-btn').addEventListener('click', openSettings);
+document.getElementById('settings-backdrop').addEventListener('click', e => { if (e.target === e.currentTarget) closeSettings(); });
+document.getElementById('signin-btn').addEventListener('click', startLogin);
+document.getElementById('signout-btn').addEventListener('click', () => {
+  sessionStorage.removeItem('access_token');
+  sessionStorage.removeItem('token_expiry');
+  showAuthScreen();
+});
+document.getElementById('refresh-btn').addEventListener('click', refreshEvents);
+
+document.querySelectorAll('.view-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    viewDays = parseInt(btn.dataset.view);
+    if (viewDays === 7) {
+      const d = new Date(anchorDate), day = d.getDay();
+      d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+      anchorDate = d;
+    }
+    savePrefs();
+    renderGrid();
+  });
+});
+document.getElementById('prev-btn').addEventListener('click', () => { anchorDate = addDays(anchorDate, viewDays === 7 ? -7 : -1); renderGrid(); });
+document.getElementById('next-btn').addEventListener('click', () => { anchorDate = addDays(anchorDate, viewDays === 7 ? +7 : +1); renderGrid(); });
+document.getElementById('today-btn').addEventListener('click', () => { anchorDate = startOfToday(); renderGrid(); });
+
+// Refresh now-line every minute
+setInterval(() => {
+  const nl = document.querySelector('.now-line');
+  if (!nl) return;
+  const hourPx = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--hour-height')) || 64;
+  const nowMins = (new Date().getHours() - START_HOUR) * 60 + new Date().getMinutes();
+  if (nowMins >= 0 && nowMins <= TOTAL_HRS * 60) nl.style.top = (nowMins * hourPx / 60) + 'px';
+}, 60000);
+
+// ── BOOT ──────────────────────────────────────────────────────────────────────
+(async () => {
+  // Restore dark mode and view before anything renders
+  const prefs = loadPrefs();
+  if (prefs) {
+    if (prefs.darkMode) applyDarkPref(true);
+    if (prefs.viewDays) {
+      viewDays = prefs.viewDays;
+      document.querySelectorAll('.view-btn').forEach(b => {
+        b.classList.toggle('active', parseInt(b.dataset.view) === viewDays);
+      });
+    }
+  }
+
+  const params = new URLSearchParams(location.search);
+  const code   = params.get('code');
+  const error  = params.get('error');
+
+  if (error) {
+    history.replaceState({}, '', location.pathname);
+    showAuthScreen('Google sign-in was cancelled or denied.');
+    return;
+  }
+
+  if (code) {
+    showApp();
+    showLoading(true);
+    await handleCallback(code);
+    return;
+  }
+
+  if (loadStoredToken()) {
+    await initApp();
+    return;
+  }
+
+  showAuthScreen();
+})();
+</script>
 </body>
 </html>
