@@ -9,9 +9,9 @@
 
 :root {
   --hour-height: 64px;
-  --time-col-width: 52px;
-  --lane-min-width: 130px;
-  --header-height: 56px;
+  --time-col-width: 44px;
+  --lane-min-width: 80px;
+  --header-height: 52px;
 }
 
 body {
@@ -75,22 +75,25 @@ body {
 .topbar {
   background: #fff;
   border-bottom: 1px solid #e0e0e0;
-  padding: 10px 16px;
+  padding: 6px 10px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 6px;
+  flex-wrap: nowrap;
   flex-shrink: 0;
   z-index: 10;
   box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  overflow-x: auto;
 }
 
 .topbar h1 {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   color: #1a1a1a;
-  margin-right: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
+@media (max-width: 600px) { .topbar h1 { display: none; } }
 
 .view-btns {
   display: flex;
@@ -101,15 +104,16 @@ body {
 }
 
 .view-btn {
-  padding: 5px 14px;
+  padding: 5px 10px;
   border: none;
   background: transparent;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   color: #666;
   transition: all 0.15s;
+  white-space: nowrap;
 }
 .view-btn.active {
   background: #fff;
@@ -135,23 +139,26 @@ body {
 .nav-btn:hover { background: #f5f5f5; }
 
 #date-label {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   color: #333;
-  min-width: 160px;
-  text-align: center;
+  min-width: 0;
+  white-space: nowrap;
+  flex-shrink: 1;
 }
 
 .today-btn, .refresh-btn, .signout-btn {
-  padding: 5px 12px;
+  padding: 5px 9px;
   border: 1px solid #ddd;
   background: #fff;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   color: #333;
   transition: background 0.1s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .today-btn:hover, .signout-btn:hover { background: #f5f5f5; }
 
@@ -170,23 +177,28 @@ body {
 
 .cal-toggles {
   display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
+  gap: 4px;
+  flex-wrap: nowrap;
   margin-left: auto;
+  overflow-x: auto;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 .cal-toggle {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
+  gap: 5px;
+  padding: 4px 8px;
   border-radius: 20px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   border: 2px solid transparent;
   transition: all 0.15s;
   user-select: none;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .cal-toggle.off {
   opacity: 0.35;
@@ -234,7 +246,12 @@ body {
   width: var(--time-col-width);
   flex-shrink: 0;
   border-right: 1px solid #e0e0e0;
+  position: sticky;
+  left: 0;
+  z-index: 6;
+  background: #fff;
 }
+body.dark .time-gutter-header { background: #16213e; }
 
 .day-col-header {
   flex: 1;
@@ -281,7 +298,12 @@ body {
   width: var(--time-col-width);
   flex-shrink: 0;
   border-right: 1px solid #e0e0e0;
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  background: #fafafa;
 }
+body.dark .time-gutter-spacer { background: #1a1a2e; }
 .lane-labels-day {
   flex: 1;
   display: flex;
@@ -307,7 +329,12 @@ body {
   width: var(--time-col-width);
   flex-shrink: 0;
   border-right: 1px solid #e0e0e0;
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: #fff;
 }
+body.dark .time-gutter { background: #1a1a2e; }
 .time-slot {
   height: var(--hour-height);
   border-bottom: 1px solid #f0f0f0;
@@ -599,6 +626,25 @@ body.dark .btn-cancel:hover { background: #0f3460; }
 body.dark .dark-toggle-btn { background: #16213e; border-color: #2a2a4a; }
 body.dark .dark-toggle-btn:hover { background: #0f3460; }
 
+@media (max-width: 600px) {
+  :root { --lane-min-width: 0px; --hour-height: 56px; --time-col-width: 36px; }
+  .btn-label { display: none; }
+  .btn-icon  { display: inline !important; }
+  .refresh-btn { padding: 5px 7px; }
+  .signout-btn { padding: 5px 7px; }
+  #date-label { font-size: 11px; }
+  .nav-btn { width: 26px; height: 26px; font-size: 14px; }
+  .today-btn { padding: 5px 7px; font-size: 11px; }
+  .day-label { font-size: 9px; }
+  .day-number { font-size: 16px; }
+  .lane-label { font-size: 9px; padding: 2px 2px; }
+  .event { font-size: 10px; padding: 2px 3px; }
+  .event .ev-title { font-size: 10px; }
+  .event .ev-time  { font-size: 9px; }
+  .time-slot span  { font-size: 9px; }
+  .modal { padding: 16px; gap: 10px; }
+}
+
 /* ── GEAR BTN ── */
 .gear-btn {
   width: 30px; height: 30px;
@@ -731,16 +777,16 @@ body.dark .settings-row { border-bottom-color: #2a2a3a; }
 
     <div id="date-label"></div>
 
-    <button class="refresh-btn" id="refresh-btn">
+    <button class="refresh-btn" id="refresh-btn" title="Refresh">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-      Refresh
+      <span class="btn-label">Refresh</span>
     </button>
 
     <div class="cal-toggles" id="cal-toggles"></div>
 
     <button class="dark-toggle-btn" id="dark-toggle-btn" title="Toggle dark mode">🌙</button>
     <button class="gear-btn" id="gear-btn" title="Settings">⚙️</button>
-    <button class="signout-btn" id="signout-btn">Sign out</button>
+    <button class="signout-btn" id="signout-btn" title="Sign out"><span class="btn-label">Sign out</span><span class="btn-icon" style="display:none">⏏</span></button>
   </div>
 
   <div id="status"></div>
@@ -1326,14 +1372,7 @@ function renderGrid() {
     }
     dayCol.appendChild(hl);
 
-    // Now line
-    if (isToday(d)) {
-      const now = new Date();
-      const nowMins = (now.getHours() - START_HOUR) * 60 + now.getMinutes();
-      if (nowMins >= 0 && nowMins <= TOTAL_HRS * 60) {
-        const nl = el('div', 'now-line'); nl.style.top = (nowMins * pxPerMin) + 'px'; dayCol.appendChild(nl);
-      }
-    }
+    // Now line is rendered once in daysArea after days loop
 
     // Lane columns
     activeCals.forEach(cal => {
@@ -1364,6 +1403,7 @@ function renderGrid() {
         const top    = Math.max(0, startMins * pxPerMin);
         const height = Math.max(20, (endMins - startMins) * pxPerMin - 2);
 
+        const isPast = ev.end < new Date();
         const evEl = el('div', ev.isTentative ? 'event tentative' : 'event');
         evEl.style.top             = top + 'px';
         evEl.style.height          = height + 'px';
@@ -1371,6 +1411,7 @@ function renderGrid() {
         evEl.style.color           = color;
         evEl.style.borderLeftColor = color;
         if (ev.isTentative) evEl.style.borderLeftStyle = 'dashed';
+        if (isPast) evEl.style.opacity = '0.45';
 
         const g = 2, pct = 100 / numCols;
         evEl.style.left  = `calc(${col * pct}% + ${g}px)`;
@@ -1432,6 +1473,18 @@ function renderGrid() {
     });
     daysArea.appendChild(dayCol);
   });
+
+  // Now-line spanning all day columns for today
+  if (days.some(d => isToday(d))) {
+    const now = new Date();
+    const nowMins = (now.getHours() - START_HOUR) * 60 + now.getMinutes();
+    if (nowMins >= 0 && nowMins <= TOTAL_HRS * 60) {
+      const nl = el('div', 'now-line');
+      nl.style.top = (nowMins * pxPerMin) + 'px';
+      daysArea.style.position = 'relative';
+      daysArea.appendChild(nl);
+    }
+  }
 
   body.appendChild(daysArea);
   grid.appendChild(body);
@@ -1845,6 +1898,22 @@ function attachEventInteraction(evEl, ev, cal, laneEl, d, pxPerMin) {
       hideTooltip();
       startDrag('move', e, ev, color, laneEl, d, pxPerMin, evEl);
     });
+    evEl.addEventListener('touchstart', e => {
+      if (e.target.classList.contains('resize-handle')) return;
+      // Only start drag after a brief hold (150ms) to distinguish tap from drag
+      const touch = e.touches[0];
+      const holdTimer = setTimeout(() => {
+        e.preventDefault();
+        hideTooltip();
+        startDrag('move', touch, ev, color, laneEl, d, pxPerMin, evEl);
+        evEl._touchDragging = true;
+      }, 150);
+      evEl._touchHoldTimer = holdTimer;
+    }, { passive: true });
+    evEl.addEventListener('touchend', () => {
+      clearTimeout(evEl._touchHoldTimer);
+      evEl._touchDragging = false;
+    });
   }
 
   if (permissions.edit) {
@@ -1863,6 +1932,14 @@ function attachEventInteraction(evEl, ev, cal, laneEl, d, pxPerMin) {
       e.preventDefault(); e.stopPropagation();
       startDrag('resize-bottom', e, ev, color, laneEl, d, pxPerMin, evEl);
     });
+    topHandle.addEventListener('touchstart', e => {
+      e.preventDefault(); e.stopPropagation();
+      startDrag('resize-top', e.touches[0], ev, color, laneEl, d, pxPerMin, evEl);
+    }, { passive: false });
+    botHandle.addEventListener('touchstart', e => {
+      e.preventDefault(); e.stopPropagation();
+      startDrag('resize-bottom', e.touches[0], ev, color, laneEl, d, pxPerMin, evEl);
+    }, { passive: false });
   }
 }
 
@@ -1891,10 +1968,10 @@ function startDrag(type, e, ev, color, laneEl, d, pxPerMin, evEl) {
   };
 }
 
-document.addEventListener('mousemove', e => {
+function handleDragMove(clientY) {
   if (!dragState) return;
-  const { type, laneRect, origTop, origHeight, origStartMins, origEndMins, pxPerMin, ghostEl } = dragState;
-  const dy = e.clientY - dragState.mouseStartY;
+  const { type, origStartMins, origEndMins, pxPerMin, ghostEl } = dragState;
+  const dy = clientY - dragState.mouseStartY;
   const deltaMins = snapToQuarter(dy / pxPerMin);
 
   if (type === 'move') {
@@ -1914,12 +1991,19 @@ document.addEventListener('mousemove', e => {
     ghostEl.style.height = Math.max(20, (newEndMins - origStartMins) * pxPerMin - 2) + 'px';
     ghostEl.innerHTML = `<div class="ev-title">${escHtml(dragState.ev.title)}</div><div class="ev-time">${minsToTimeStr(origStartMins)}–${minsToTimeStr(newEndMins)}</div>`;
   }
-});
+}
 
-document.addEventListener('mouseup', async e => {
+document.addEventListener('mousemove', e => { handleDragMove(e.clientY); });
+document.addEventListener('touchmove', e => {
+  if (!dragState) return;
+  e.preventDefault();
+  handleDragMove(e.touches[0].clientY);
+}, { passive: false });
+
+async function handleDragEnd(clientY) {
   if (!dragState) return;
   const { type, ev, laneEl, dayDate, pxPerMin, ghostEl, evEl, origStartMins, origEndMins } = dragState;
-  const dy = e.clientY - dragState.mouseStartY;
+  const dy = clientY - dragState.mouseStartY;
   const deltaMins = snapToQuarter(dy / pxPerMin);
   dragState = null;
 
@@ -1970,6 +2054,12 @@ document.addEventListener('mouseup', async e => {
     renderGrid();
     alert('Update failed: ' + err.message);
   }
+}
+
+document.addEventListener('mouseup',  e => handleDragEnd(e.clientY));
+document.addEventListener('touchend', e => {
+  if (!dragState) return;
+  handleDragEnd(e.changedTouches[0].clientY);
 });
 
 function minsToTimeStr(mins) {
@@ -2020,7 +2110,7 @@ document.getElementById('today-btn').addEventListener('click', () => { anchorDat
 
 // Refresh now-line every minute
 setInterval(() => {
-  const nl = document.querySelector('.now-line');
+  const nl = document.querySelector('.days-area .now-line');
   if (!nl) return;
   const hourPx = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--hour-height')) || 64;
   const nowMins = (new Date().getHours() - START_HOUR) * 60 + new Date().getMinutes();
