@@ -480,7 +480,8 @@ body {
 // Create one at: console.cloud.google.com → APIs & Services → Credentials
 // Type: Web application. Add your hosted URL (and http://localhost:PORT) as
 // Authorised redirect URIs.
-const CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID';
+const CLIENT_ID     = 'YOUR_CLIENT_ID';     // paste from Google Cloud Console → Credentials
+const CLIENT_SECRET = 'YOUR_CLIENT_SECRET'; // paste from Google Cloud Console → Credentials
 
 const SCOPES = 'https://www.googleapis.com/auth/calendar.readonly';
 const REDIRECT_URI = location.origin + location.pathname;
@@ -566,6 +567,7 @@ async function handleCallback(code) {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         client_id:     CLIENT_ID,
+        client_secret: CLIENT_SECRET,
         code,
         code_verifier: verifier,
         grant_type:    'authorization_code',
