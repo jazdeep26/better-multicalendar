@@ -357,8 +357,25 @@ body {
   transition: box-shadow 0.15s;
 }
 .event:hover { box-shadow: 0 3px 10px rgba(0,0,0,0.2); z-index: 10; }
-.event .ev-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.event .ev-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 18px; }
 .event .ev-time  { font-size: 10px; font-weight: 400; opacity: 0.8; margin-top: 1px; }
+.ev-copy-btn {
+  position: absolute;
+  top: 2px; right: 2px;
+  width: 16px; height: 16px;
+  border: none; background: transparent;
+  cursor: pointer;
+  padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+  color: inherit;
+  border-radius: 3px;
+  z-index: 3;
+}
+.event:hover .ev-copy-btn { opacity: 0.7; }
+.ev-copy-btn:hover { opacity: 1 !important; background: rgba(0,0,0,0.1); }
+.ev-copy-btn svg { width: 11px; height: 11px; }
 
 /* Now line */
 .now-line {
@@ -1307,6 +1324,29 @@ function renderGrid() {
           ? `<div class="ev-title">${escHtml(ev.title)}</div><div class="ev-time">${fmtTime(ev.start)}–${fmtTime(ev.end)}</div>`
           : `<div class="ev-title">${escHtml(ev.title)}</div>`;
 
+        // Copy button
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'ev-copy-btn';
+        copyBtn.title = 'Copy reminder message';
+        copyBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="9" height="11" rx="1.5"/><path d="M3 4H2a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1"/></svg>';
+        const getAllDayEvsForChild = () => {
+          // Gather events from ALL calendars for this day, then filter to this child
+          const dateStr = fmtDate(d);
+          const allEvs = Object.values(cachedEvents).flat().filter(x => fmtDate(x.start) === dateStr);
+          return buildReminderMessage(ev, d, allEvs);
+        };
+        copyBtn.addEventListener('mouseenter', e => {
+          e.stopPropagation();
+          showTooltip(e, null, null, getAllDayEvsForChild());
+        });
+        copyBtn.addEventListener('mousemove', e => { e.stopPropagation(); moveTooltip(e); });
+        copyBtn.addEventListener('mouseleave', e => { e.stopPropagation(); hideTooltip(); });
+        copyBtn.addEventListener('click', e => {
+          e.stopPropagation();
+          copyToClipboard(copyBtn, getAllDayEvsForChild());
+        });
+        evEl.appendChild(copyBtn);
+
         evEl.addEventListener('mouseenter', e => showTooltip(e, ev, cal));
         evEl.addEventListener('mousemove',  e => moveTooltip(e));
         evEl.addEventListener('mouseleave', hideTooltip);
@@ -1333,14 +1373,18 @@ function renderGrid() {
 
 // ── TOOLTIP ───────────────────────────────────────────────────────────────────
 const tooltipEl = document.getElementById('tooltip');
-function showTooltip(e, ev, cal) {
-  tooltipEl.innerHTML = `
-    <strong>${escHtml(ev.title)}</strong><br>
-    <span style="opacity:0.75">${escHtml(cal.summary)}</span><br>
-    ${fmtTime(ev.start)} – ${fmtTime(ev.end)}
-    ${ev.location ? `<br>📍 ${escHtml(ev.location)}` : ''}
-    ${ev.desc     ? `<br><span style="opacity:0.7;font-size:11px">${escHtml(ev.desc.slice(0,100))}</span>` : ''}
-  `;
+function showTooltip(e, ev, cal, plainText) {
+  if (plainText !== undefined) {
+    tooltipEl.innerHTML = `<pre style="margin:0;font-family:inherit;font-size:11px;white-space:pre-wrap">${escHtml(plainText)}</pre>`;
+  } else {
+    tooltipEl.innerHTML = `
+      <strong>${escHtml(ev.title)}</strong><br>
+      <span style="opacity:0.75">${escHtml(cal.summary)}</span><br>
+      ${fmtTime(ev.start)} – ${fmtTime(ev.end)}
+      ${ev.location ? `<br>📍 ${escHtml(ev.location)}` : ''}
+      ${ev.desc     ? `<br><span style="opacity:0.7;font-size:11px">${escHtml(ev.desc.slice(0,100))}</span>` : ''}
+    `;
+  }
   tooltipEl.style.display = 'block';
   moveTooltip(e);
 }
@@ -1354,6 +1398,72 @@ function hideTooltip() { tooltipEl.style.display = 'none'; }
 
 // ── UI HELPERS ────────────────────────────────────────────────────────────────
 function el(tag, cls) { const e = document.createElement(tag); if (cls) e.className = cls; return e; }
+
+function parseEventTitle(title) {
+  // "ChildName - TherapyType" or "ChildName - TherapyType - Extra"
+  // Returns { childName, therapyType }
+  const parts = title.split(' - ');
+  return {
+    childName:   parts[0]?.trim() || title,
+    therapyType: parts[1]?.trim() || title,
+  };
+}
+
+function buildReminderMessage(clickedEv, dayDate, allDayEvents) {
+  const pad = n => String(n).padStart(2, '0');
+  const { childName } = parseEventTitle(clickedEv.title);
+
+  // Header date label
+  const dayAbbr = DAY_ABBR[dayDate.getDay()];
+  const d       = dayDate.getDate();
+  const monAbbr = MONTH_ABR[dayDate.getMonth()];
+
+  // "today" / "tomorrow" / "on {DayAbbr}, {D} {Mon}"
+  const today    = startOfToday();
+  const tomorrow = addDays(today, 1);
+  const dayFmt   = fmtDate(dayDate);
+  let whenWord;
+  if      (dayFmt === fmtDate(today))    whenWord = `today (${dayAbbr}, ${d} ${monAbbr})`;
+  else if (dayFmt === fmtDate(tomorrow)) whenWord = `tomorrow (${dayAbbr}, ${d} ${monAbbr})`;
+  else                                   whenWord = `on ${dayAbbr}, ${d} ${monAbbr}`;
+
+  // Collect only this child's events for the day, in order
+  const childEvs = allDayEvents
+    .filter(ev => parseEventTitle(ev.title).childName === childName)
+    .sort((a, b) => a.start - b.start);
+
+  const lines = childEvs.map(ev => {
+    const h    = ev.start.getHours();
+    const m    = pad(ev.start.getMinutes());
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12  = pad(h % 12 || 12);
+    const { therapyType } = parseEventTitle(ev.title);
+    return `${h12}:${m} ${ampm} - ${therapyType}`;
+  }).join('\n');
+
+  return `Hi! ${childName}'s sessions ${whenWord}:\n\n${lines}\n\nSee you!`;
+}
+
+async function copyToClipboard(btn, text) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;top:-999px;left:-999px';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 8 6 12 14 4"/></svg>';
+    setTimeout(() => { btn.innerHTML = orig; }, 1500);
+  } catch (e) {
+    alert('Copy failed: ' + e.message);
+  }
+}
 function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 function showApp()        { document.getElementById('auth-screen').style.display = 'none';  document.getElementById('app').style.display = 'flex'; }
