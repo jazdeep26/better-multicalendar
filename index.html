@@ -11,7 +11,7 @@
   --hour-height: 64px;
   --time-col-width: 44px;
   --lane-min-width: 80px;
-  --header-height: 52px;
+  --header-height: 40px;
 }
 
 body {
@@ -270,11 +270,20 @@ body.dark .time-gutter-header { background: #16213e; }
   flex: 1;
   min-width: 0;
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   border-right: 1px solid #e0e0e0;
+  padding: 6px 4px;
+}
+/* day abbr + number sit side-by-side in a pill wrapper */
+.day-pill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  border-radius: 20px;
+  padding: 3px 8px;
 }
 .day-label {
-  padding: 8px 8px 0;
   font-size: 11px;
   font-weight: 600;
   color: #888;
@@ -282,20 +291,19 @@ body.dark .time-gutter-header { background: #16213e; }
   letter-spacing: 0.5px;
 }
 .day-number {
-  padding: 2px 8px 6px;
-  font-size: 22px;
+  font-size: 16px;
   font-weight: 700;
   color: #1a1a1a;
   line-height: 1;
 }
+/* Today: pill gets the blue background */
+.day-col-header.today .day-pill {
+  background: #1a73e8;
+  padding: 3px 10px;
+}
+.day-col-header.today .day-label,
 .day-col-header.today .day-number {
   color: #fff;
-  background: #1a73e8;
-  border-radius: 50%;
-  width: 36px; height: 36px;
-  display: flex; align-items: center; justify-content: center;
-  margin: 2px 8px 4px;
-  font-size: 18px;
 }
 
 /* Lane labels row */
@@ -354,7 +362,7 @@ body.dark .time-gutter { background: #1a1a2e; }
   display: flex;
   align-items: flex-start;
   padding-top: 4px;
-  padding-right: 6px;
+  padding-right: 4px;
   justify-content: flex-end;
 }
 .time-slot span { font-size: 10px; color: #aaa; font-weight: 500; }
@@ -656,9 +664,11 @@ body.dark .dark-toggle-btn:hover { background: #0f3460; }
   .view-btn[data-view="1"] .vs::after { content: '1D'; }
   .view-btn[data-view="3"] .vs::after { content: '3D'; }
   .view-btn[data-view="7"] .vs::after { content: '7D'; }
-  .day-label   { font-size: 9px; padding: 4px 4px 0; }
-  .day-number  { font-size: 15px; padding: 0 4px 4px; }
-  .day-col-header.today .day-number { width: 28px; height: 28px; font-size: 14px; margin: 2px 4px 3px; }
+  #date-label  { display: none; }
+  .day-label   { font-size: 9px; }
+  .day-number  { font-size: 13px; }
+  .day-pill    { padding: 2px 5px; gap: 3px; }
+  .day-col-header.today .day-pill { padding: 2px 6px; }
   .lane-label  { font-size: 9px; padding: 2px 2px; }
   .event       { font-size: 10px; padding: 2px 3px; }
   .event .ev-title { font-size: 10px; }
@@ -1348,7 +1358,7 @@ function renderGrid() {
   hRow.appendChild(el('div', 'time-gutter-header'));
   days.forEach(d => {
     const dh = el('div', 'day-col-header' + (isToday(d) ? ' today' : ''));
-    dh.innerHTML = `<div class="day-label">${DAY_ABBR[d.getDay()]}</div><div class="day-number">${d.getDate()}</div>`;
+    dh.innerHTML = `<div class="day-pill"><span class="day-label">${DAY_ABBR[d.getDay()]}</span><span class="day-number">${d.getDate()}</span></div>`;
     hRow.appendChild(dh);
   });
   grid.appendChild(hRow);
