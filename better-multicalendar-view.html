@@ -468,6 +468,66 @@ body.dark .lane-label { border-right-color: #2a2a3a; }
 body.dark .loading-overlay { background: rgba(22,33,62,0.9); color: #ccc; }
 body.dark .spinner { border-color: #2a2a4a; border-top-color: #1a73e8; }
 
+/* ── EVENT MODAL ── */
+.modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 100;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+.modal-backdrop.open { display: flex; }
+.modal {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px;
+  width: 420px;
+  max-width: 95vw;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+body.dark .modal { background: #16213e; color: #e0e0e0; }
+.modal h2 { font-size: 16px; font-weight: 700; }
+.modal label { font-size: 12px; font-weight: 600; color: #666; display: block; margin-bottom: 4px; }
+body.dark .modal label { color: #aaa; }
+.modal input, .modal textarea, .modal select {
+  width: 100%;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  background: #fff;
+  color: #1a1a1a;
+}
+body.dark .modal input,
+body.dark .modal textarea,
+body.dark .modal select { background: #0f3460; border-color: #2a2a4a; color: #e0e0e0; }
+.modal textarea { resize: vertical; min-height: 60px; }
+.modal-row { display: flex; gap: 10px; }
+.modal-row > div { flex: 1; }
+.modal-actions { display: flex; gap: 8px; margin-top: 4px; }
+.btn-save {
+  flex: 1; padding: 8px; border: none; border-radius: 6px;
+  background: #1a73e8; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.btn-save:hover { background: #1557b0; }
+.btn-delete {
+  padding: 8px 14px; border: 1px solid #ea4335; border-radius: 6px;
+  background: transparent; color: #ea4335; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.btn-delete:hover { background: #fce8e6; }
+.btn-cancel {
+  padding: 8px 14px; border: 1px solid #ddd; border-radius: 6px;
+  background: transparent; color: #666; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.btn-cancel:hover { background: #f5f5f5; }
+body.dark .btn-cancel { border-color: #2a2a4a; color: #aaa; }
+body.dark .btn-cancel:hover { background: #0f3460; }
+
 /* ── DRAG REORDER ── */
 .cal-toggle { cursor: grab; }
 .cal-toggle.dragging { opacity: 0.5; cursor: grabbing; }
@@ -545,6 +605,44 @@ body.dark .dark-toggle-btn:hover { background: #0f3460; }
 
 <div class="tooltip" id="tooltip"></div>
 
+<!-- EVENT MODAL -->
+<div class="modal-backdrop" id="modal-backdrop">
+  <div class="modal">
+    <h2 id="modal-title">Edit Event</h2>
+    <div>
+      <label>Title</label>
+      <input type="text" id="modal-evt-title" placeholder="Event title">
+    </div>
+    <div class="modal-row">
+      <div>
+        <label>Start</label>
+        <input type="datetime-local" id="modal-evt-start">
+      </div>
+      <div>
+        <label>End</label>
+        <input type="datetime-local" id="modal-evt-end">
+      </div>
+    </div>
+    <div>
+      <label>Calendar</label>
+      <select id="modal-evt-cal"></select>
+    </div>
+    <div>
+      <label>Location</label>
+      <input type="text" id="modal-evt-location" placeholder="Location (optional)">
+    </div>
+    <div>
+      <label>Description</label>
+      <textarea id="modal-evt-desc" placeholder="Description (optional)"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-save" id="modal-save-btn">Save</button>
+      <button class="btn-delete" id="modal-delete-btn" style="display:none">Delete</button>
+      <button class="btn-cancel" id="modal-cancel-btn">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ── CONFIG ────────────────────────────────────────────────────────────────────
 // Replace with your own OAuth 2.0 Client ID from Google Cloud Console.
@@ -554,7 +652,7 @@ body.dark .dark-toggle-btn:hover { background: #0f3460; }
 const CLIENT_ID = '593921280096-38ohg1bghcihdb4ctpfacg3e0sdd4rtg.apps.googleusercontent.com';
 const CLIENT_SECRET = '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';
 
-const SCOPES = 'https://www.googleapis.com/auth/calendar.readonly';
+const SCOPES = 'https://www.googleapis.com/auth/calendar';
 const REDIRECT_URI = location.origin + location.pathname;
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
@@ -703,6 +801,27 @@ async function apiGet(url) {
   return resp.json();
 }
 
+async function apiWrite(method, url, body) {
+  if (!isTokenValid()) {
+    sessionStorage.removeItem('access_token');
+    sessionStorage.removeItem('token_expiry');
+    showAuthScreen('Session expired — please sign in again.');
+    throw new Error('token_expired');
+  }
+  const opts = { method, headers: { Authorization: 'Bearer ' + accessToken } };
+  if (body !== undefined) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  }
+  const resp = await fetch(url, opts);
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error?.message || `HTTP ${resp.status}`);
+  }
+  if (resp.status === 204) return null;
+  return resp.json();
+}
+
 // ── CALENDAR LIST ─────────────────────────────────────────────────────────────
 async function fetchCalendarList() {
   const data = await apiGet('https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=250');
@@ -728,6 +847,7 @@ async function fetchEvents(calId, timeMin, timeMax) {
       if (!start) continue;
       events.push({
         id:       ev.id,
+        calId,
         title:    ev.summary || '(No title)',
         start:    new Date(start),
         end:      new Date(end),
@@ -1001,6 +1121,17 @@ function renderGrid() {
     activeCals.forEach(cal => {
       const lane = el('div', 'lane-col');
       lane.style.minHeight = totalH + 'px';
+      lane.addEventListener('click', e => {
+        const rect = lane.getBoundingClientRect();
+        const clickY = e.clientY - rect.top;
+        const mins = Math.round((clickY / pxPerMin) / 15) * 15;
+        const startDate = new Date(d);
+        startDate.setHours(START_HOUR, 0, 0, 0);
+        startDate.setMinutes(startDate.getMinutes() + mins);
+        const endDate = new Date(startDate);
+        endDate.setMinutes(endDate.getMinutes() + 60);
+        openCreateModal(cal.id, startDate, endDate);
+      });
 
       const events = (cachedEvents[cal.id] || []).filter(ev => fmtDate(ev.start) === fmtDate(d));
       const laid = layoutEvents(events);
@@ -1031,6 +1162,8 @@ function renderGrid() {
         evEl.addEventListener('mouseenter', e => showTooltip(e, ev, cal));
         evEl.addEventListener('mousemove',  e => moveTooltip(e));
         evEl.addEventListener('mouseleave', hideTooltip);
+        evEl.addEventListener('click', e => { e.stopPropagation(); hideTooltip(); openEditModal(ev); });
+        evEl.style.cursor = 'pointer';
         lane.appendChild(evEl);
       });
 
@@ -1098,12 +1231,161 @@ function updateDateLabel(days) {
   }
 }
 
+// ── MODAL ─────────────────────────────────────────────────────────────────────
+let modalMode = null; // 'edit' | 'create'
+let modalEventRef = null; // existing event object (edit mode)
+
+function toLocalDatetimeValue(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function populateCalSelect(selectedCalId) {
+  const sel = document.getElementById('modal-evt-cal');
+  sel.innerHTML = '';
+  calendarList.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.summary;
+    if (c.id === selectedCalId) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function openEditModal(ev) {
+  modalMode = 'edit';
+  modalEventRef = ev;
+  document.getElementById('modal-title').textContent = 'Edit Event';
+  document.getElementById('modal-evt-title').value    = ev.title === '(No title)' ? '' : ev.title;
+  document.getElementById('modal-evt-start').value   = toLocalDatetimeValue(ev.start);
+  document.getElementById('modal-evt-end').value     = toLocalDatetimeValue(ev.end);
+  document.getElementById('modal-evt-location').value = ev.location || '';
+  document.getElementById('modal-evt-desc').value    = ev.desc || '';
+  document.getElementById('modal-delete-btn').style.display = '';
+  populateCalSelect(ev.calId);
+  document.getElementById('modal-backdrop').classList.add('open');
+}
+
+function openCreateModal(calId, startDate, endDate) {
+  modalMode = 'create';
+  modalEventRef = null;
+  document.getElementById('modal-title').textContent = 'New Event';
+  document.getElementById('modal-evt-title').value    = '';
+  document.getElementById('modal-evt-start').value   = toLocalDatetimeValue(startDate);
+  document.getElementById('modal-evt-end').value     = toLocalDatetimeValue(endDate);
+  document.getElementById('modal-evt-location').value = '';
+  document.getElementById('modal-evt-desc').value    = '';
+  document.getElementById('modal-delete-btn').style.display = 'none';
+  populateCalSelect(calId);
+  document.getElementById('modal-backdrop').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modal-backdrop').classList.remove('open');
+  modalMode = null;
+  modalEventRef = null;
+}
+
+async function saveModal() {
+  const title    = document.getElementById('modal-evt-title').value.trim() || '(No title)';
+  const startVal = document.getElementById('modal-evt-start').value;
+  const endVal   = document.getElementById('modal-evt-end').value;
+  const location = document.getElementById('modal-evt-location').value.trim();
+  const desc     = document.getElementById('modal-evt-desc').value.trim();
+  const calId    = document.getElementById('modal-evt-cal').value;
+
+  if (!startVal || !endVal) { alert('Please set start and end times.'); return; }
+
+  const startDt = new Date(startVal);
+  const endDt   = new Date(endVal);
+  if (endDt <= startDt) { alert('End must be after start.'); return; }
+
+  const body = {
+    summary:     title,
+    start:       { dateTime: startDt.toISOString() },
+    end:         { dateTime: endDt.toISOString() },
+    description: desc || undefined,
+    location:    location || undefined,
+  };
+
+  const saveBtn = document.getElementById('modal-save-btn');
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'Saving…';
+
+  try {
+    if (modalMode === 'create') {
+      const created = await apiWrite('POST',
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events`,
+        body
+      );
+      const start = created.start?.dateTime || created.start?.date;
+      const end   = created.end?.dateTime   || created.end?.date;
+      if (!cachedEvents[calId]) cachedEvents[calId] = [];
+      cachedEvents[calId].push({
+        id: created.id, calId,
+        title: created.summary || '(No title)',
+        start: new Date(start), end: new Date(end),
+        desc: created.description || '', location: created.location || '',
+      });
+    } else {
+      const origCalId = modalEventRef.calId;
+      const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(origCalId)}/events/${encodeURIComponent(modalEventRef.id)}`;
+      const updated = await apiWrite('PATCH', url, body);
+      const start = updated.start?.dateTime || updated.start?.date;
+      const end   = updated.end?.dateTime   || updated.end?.date;
+      const idx = (cachedEvents[origCalId] || []).findIndex(e => e.id === modalEventRef.id);
+      if (idx !== -1) {
+        cachedEvents[origCalId][idx] = {
+          id: updated.id, calId: origCalId,
+          title: updated.summary || '(No title)',
+          start: new Date(start), end: new Date(end),
+          desc: updated.description || '', location: updated.location || '',
+        };
+      }
+    }
+    closeModal();
+    renderGrid();
+  } catch (e) {
+    alert('Save failed: ' + e.message);
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Save';
+  }
+}
+
+async function deleteModal() {
+  if (!modalEventRef) return;
+  if (!confirm(`Delete "${modalEventRef.title}"?`)) return;
+
+  const deleteBtn = document.getElementById('modal-delete-btn');
+  deleteBtn.disabled = true;
+  deleteBtn.textContent = 'Deleting…';
+
+  try {
+    await apiWrite('DELETE',
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(modalEventRef.calId)}/events/${encodeURIComponent(modalEventRef.id)}`
+    );
+    const arr = cachedEvents[modalEventRef.calId] || [];
+    cachedEvents[modalEventRef.calId] = arr.filter(e => e.id !== modalEventRef.id);
+    closeModal();
+    renderGrid();
+  } catch (e) {
+    alert('Delete failed: ' + e.message);
+    deleteBtn.disabled = false;
+    deleteBtn.textContent = 'Delete';
+  }
+}
+
 // ── EVENT HANDLERS ────────────────────────────────────────────────────────────
 document.getElementById('dark-toggle-btn').addEventListener('click', () => {
   const isDark = document.body.classList.toggle('dark');
   document.getElementById('dark-toggle-btn').textContent = isDark ? '☀️' : '🌙';
   savePrefs();
 });
+document.getElementById('modal-save-btn').addEventListener('click', saveModal);
+document.getElementById('modal-delete-btn').addEventListener('click', deleteModal);
+document.getElementById('modal-cancel-btn').addEventListener('click', closeModal);
+document.getElementById('modal-backdrop').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
 document.getElementById('signin-btn').addEventListener('click', startLogin);
 document.getElementById('signout-btn').addEventListener('click', () => {
   sessionStorage.removeItem('access_token');
