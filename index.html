@@ -527,6 +527,15 @@ body.dark .modal select { background: #0f3460; border-color: #2a2a4a; color: #e0
 .modal-row { display: flex; gap: 10px; }
 .modal-row > div { flex: 1; }
 .modal-actions { display: flex; gap: 8px; margin-top: 4px; }
+.modal-meet-row { display: flex; align-items: center; gap: 8px; background: #f0f7ff; border-radius: 8px; padding: 8px 10px; }
+body.dark .modal-meet-row { background: #0f3460; }
+.modal-meet-row a { font-size: 12px; color: #1a73e8; text-decoration: none; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modal-meet-row a:hover { text-decoration: underline; }
+.modal-meet-row svg { flex-shrink: 0; color: #1a73e8; }
+.btn-meet-copy { flex-shrink: 0; border: none; background: transparent; cursor: pointer; color: #1a73e8; padding: 2px 4px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+.btn-meet-copy:hover { background: #d2e3fc; }
+body.dark .btn-meet-copy:hover { background: #1a3a6a; }
+.ev-meet-icon { position: absolute; bottom: 3px; right: 22px; opacity: 0.7; line-height: 1; font-size: 10px; }
 .modal-tentative-row { display: flex; align-items: center; gap: 10px; }
 .modal-tentative-row label { margin-bottom: 0; font-size: 13px; font-weight: 500; color: #1a1a1a; cursor: pointer; }
 body.dark .modal-tentative-row label { color: #e0e0e0; }
@@ -548,8 +557,8 @@ body.dark .modal-tentative-row label { color: #e0e0e0; }
     -45deg,
     transparent,
     transparent 4px,
-    rgba(255,255,255,0.35) 4px,
-    rgba(255,255,255,0.35) 8px
+    rgba(255,255,255,0.1) 4px,
+    rgba(255,255,255,0.1) 8px
   ) !important;
   opacity: 0.75;
 }
@@ -777,6 +786,11 @@ body.dark .settings-row { border-bottom-color: #2a2a3a; }
       <label>Description</label>
       <textarea id="modal-evt-desc" placeholder="Description (optional)"></textarea>
     </div>
+    <div id="modal-meet-row" class="modal-meet-row" style="display:none">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+      <a id="modal-meet-link" href="#" target="_blank" rel="noopener"></a>
+      <button class="btn-meet-copy" id="modal-meet-copy-btn" title="Copy link">Copy</button>
+    </div>
     <div class="modal-tentative-row">
       <label class="toggle-switch">
         <input type="checkbox" id="modal-evt-tentative">
@@ -923,7 +937,7 @@ async function startLogin() {
     code_challenge:        challenge,
     code_challenge_method: 'S256',
     access_type:           'online',
-    prompt:                'consent',
+    prompt:                'select_account',
   });
   location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params;
 }
@@ -961,13 +975,13 @@ async function handleCallback(code) {
 function storeToken(token, expiresIn) {
   accessToken = token;
   tokenExpiry = Date.now() + (expiresIn - 60) * 1000;
-  sessionStorage.setItem('access_token', token);
-  sessionStorage.setItem('token_expiry', tokenExpiry);
+  localStorage.setItem('access_token', token);
+  localStorage.setItem('token_expiry', tokenExpiry);
 }
 
 function loadStoredToken() {
-  const t = sessionStorage.getItem('access_token');
-  const e = parseInt(sessionStorage.getItem('token_expiry') || '0');
+  const t = localStorage.getItem('access_token');
+  const e = parseInt(localStorage.getItem('token_expiry') || '0');
   if (t && e > Date.now()) { accessToken = t; tokenExpiry = e; return true; }
   return false;
 }
@@ -976,8 +990,8 @@ function isTokenValid() { return accessToken && Date.now() < tokenExpiry; }
 
 async function apiGet(url) {
   if (!isTokenValid()) {
-    sessionStorage.removeItem('access_token');
-    sessionStorage.removeItem('token_expiry');
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('token_expiry');
     showAuthScreen('Session expired — please sign in again.');
     throw new Error('token_expired');
   }
@@ -991,8 +1005,8 @@ async function apiGet(url) {
 
 async function apiWrite(method, url, body) {
   if (!isTokenValid()) {
-    sessionStorage.removeItem('access_token');
-    sessionStorage.removeItem('token_expiry');
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('token_expiry');
     showAuthScreen('Session expired — please sign in again.');
     throw new Error('token_expired');
   }
@@ -1035,7 +1049,11 @@ async function fetchEvents(calId, timeMin, timeMax) {
       if (!start) continue;
       const rawDesc = ev.description || '';
       const isTentative = /^Tentative$/im.test(rawDesc);
-      const cleanDesc = rawDesc.replace(/^Tentative\s*\n?/im, '').trim();
+      const cleanDesc = rawDesc.replace(/^Tentative\r?\n?/im, '').trim();
+      // Prefer the dedicated hangoutLink field (Google Meet), then scan description for Teams/Meet URLs
+      const meetLink = ev.hangoutLink ||
+        (rawDesc.match(/https:\/\/(?:meet\.google\.com|teams\.microsoft\.com|teams\.live\.com|zoom\.us\/j|us\d+\.zoom\.us\/j)[^\s"<]*/i) || [])[0] ||
+        '';
       events.push({
         id:          ev.id,
         calId,
@@ -1045,6 +1063,7 @@ async function fetchEvents(calId, timeMin, timeMax) {
         desc:        cleanDesc,
         location:    ev.location || '',
         isTentative,
+        meetLink,
       });
     }
     pageToken = data.nextPageToken || '';
@@ -1385,6 +1404,19 @@ function renderGrid() {
         });
         evEl.appendChild(copyBtn);
 
+        // Video icon for events with a meeting link (click opens the link)
+        if (ev.meetLink) {
+          const meetIcon = document.createElement('a');
+          meetIcon.className = 'ev-meet-icon';
+          meetIcon.href = ev.meetLink;
+          meetIcon.target = '_blank';
+          meetIcon.rel = 'noopener';
+          meetIcon.title = 'Join meeting';
+          meetIcon.innerHTML = '📹';
+          meetIcon.addEventListener('click', e => e.stopPropagation());
+          evEl.appendChild(meetIcon);
+        }
+
         evEl.addEventListener('mouseenter', e => showTooltip(e, ev, cal));
         evEl.addEventListener('mousemove',  e => moveTooltip(e));
         evEl.addEventListener('mouseleave', hideTooltip);
@@ -1551,6 +1583,27 @@ function populateCalSelect(selectedCalId) {
   });
 }
 
+function setupModalMeetLink(link) {
+  const row    = document.getElementById('modal-meet-row');
+  const anchor = document.getElementById('modal-meet-link');
+  if (link) {
+    anchor.href        = link;
+    anchor.textContent = link;
+    row.style.display  = 'flex';
+  } else {
+    row.style.display  = 'none';
+  }
+}
+
+document.getElementById('modal-meet-copy-btn').addEventListener('click', () => {
+  const link = document.getElementById('modal-meet-link').href;
+  navigator.clipboard.writeText(link).then(() => {
+    const btn = document.getElementById('modal-meet-copy-btn');
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+  });
+});
+
 function openEditModal(ev) {
   modalMode = 'edit';
   modalEventRef = ev;
@@ -1563,6 +1616,7 @@ function openEditModal(ev) {
   document.getElementById('modal-evt-tentative').checked = !!ev.isTentative;
   document.getElementById('modal-delete-btn').style.display = permissions.delete ? '' : 'none';
   populateCalSelect(ev.calId);
+  setupModalMeetLink(ev.meetLink || '');
   document.getElementById('modal-backdrop').classList.add('open');
 }
 
@@ -1578,6 +1632,7 @@ function openCreateModal(calId, startDate, endDate) {
   document.getElementById('modal-evt-tentative').checked = false;
   document.getElementById('modal-delete-btn').style.display = 'none';
   populateCalSelect(calId);
+  setupModalMeetLink('');
   document.getElementById('modal-backdrop').classList.add('open');
 }
 
@@ -1611,7 +1666,7 @@ async function saveModal() {
   }
 
   // Prepend "Tentative" line to description for persistence (readable in Google Calendar too)
-  const fullDesc = isTentative ? (desc ? `Tentative\n${desc}` : 'Tentative') : (desc || undefined);
+  const fullDesc = isTentative ? (desc ? `Tentative\n${desc}` : 'Tentative') : (desc || '');
   const body = {
     summary:     title,
     start:       { dateTime: toOffsetISO(startDt) },
@@ -1639,6 +1694,7 @@ async function saveModal() {
         start: new Date(start), end: new Date(end),
         desc: desc, location: created.location || '',
         isTentative,
+        meetLink: created.hangoutLink || '',
       });
     } else {
       const origCalId = modalEventRef.calId;
@@ -1664,6 +1720,7 @@ async function saveModal() {
           start: new Date(cs), end: new Date(ce),
           desc: desc, location: created.location || '',
           isTentative,
+          meetLink: created.hangoutLink || '',
         });
       } else {
         const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(origCalId)}/events/${encodeURIComponent(modalEventRef.id)}`;
@@ -1678,6 +1735,7 @@ async function saveModal() {
             start: new Date(start), end: new Date(end),
             desc: desc, location: updated.location || '',
             isTentative,
+            meetLink: modalEventRef.meetLink || '',
           };
         }
       }
