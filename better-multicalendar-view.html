@@ -1300,10 +1300,18 @@ async function saveModal() {
   const endDt   = new Date(endVal);
   if (endDt <= startDt) { alert('End must be after start.'); return; }
 
+  // Produce "2026-04-02T10:00:00+05:30" — local time with offset, not UTC
+  function toOffsetISO(d) {
+    const off = -d.getTimezoneOffset();
+    const sign = off >= 0 ? '+' : '-';
+    const pad = n => String(Math.abs(n)).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00${sign}${pad(Math.floor(Math.abs(off)/60))}:${pad(Math.abs(off)%60)}`;
+  }
+
   const body = {
     summary:     title,
-    start:       { dateTime: startDt.toISOString() },
-    end:         { dateTime: endDt.toISOString() },
+    start:       { dateTime: toOffsetISO(startDt) },
+    end:         { dateTime: toOffsetISO(endDt) },
     description: desc || undefined,
     location:    location || undefined,
   };
