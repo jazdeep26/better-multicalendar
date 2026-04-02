@@ -689,7 +689,10 @@ function startOfToday() {
 function addDays(d, n) {
   const r = new Date(d); r.setDate(r.getDate() + n); return r;
 }
-function fmtDate(d) { return d.toISOString().slice(0,10); }
+function fmtDate(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
 function fmtTime(d) {
   return d.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', hour12:true });
 }
@@ -1379,6 +1382,7 @@ async function deleteModal() {
     renderGrid();
   } catch (e) {
     alert('Delete failed: ' + e.message);
+  } finally {
     deleteBtn.disabled = false;
     deleteBtn.textContent = 'Delete';
   }
