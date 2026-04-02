@@ -552,6 +552,7 @@ body.dark .dark-toggle-btn:hover { background: #0f3460; }
 // Type: Web application. Add your hosted URL (and http://localhost:PORT) as
 // Authorised redirect URIs.
 const CLIENT_ID = '593921280096-38ohg1bghcihdb4ctpfacg3e0sdd4rtg.apps.googleusercontent.com';
+const CLIENT_SECRET = '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';
 
 const SCOPES = 'https://www.googleapis.com/auth/calendar.readonly';
 const REDIRECT_URI = location.origin + location.pathname;
@@ -655,6 +656,7 @@ async function handleCallback(code) {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         client_id:     CLIENT_ID,
+        client_secret: CLIENT_SECRET,
         code,
         code_verifier: verifier,
         grant_type:    'authorization_code',
