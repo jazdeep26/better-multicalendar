@@ -1023,8 +1023,9 @@ async function startLogin() {
     code_challenge:        challenge,
     code_challenge_method: 'S256',
     access_type:           'offline',
-    prompt:                'consent',
   });
+  // Only force consent screen if we don't already have a refresh token
+  if (!localStorage.getItem('refresh_token')) params.set('prompt', 'consent');
   location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params;
 }
 
