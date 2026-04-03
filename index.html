@@ -1022,8 +1022,8 @@ async function startLogin() {
     scope:                 SCOPES,
     code_challenge:        challenge,
     code_challenge_method: 'S256',
-    access_type:           'online',
-    prompt:                'select_account',
+    access_type:           'offline',
+    prompt:                'consent',
   });
   location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params;
 }
@@ -1051,36 +1051,66 @@ async function handleCallback(code) {
     });
     const data = await resp.json();
     if (data.error) throw new Error(data.error_description || data.error);
-    storeToken(data.access_token, data.expires_in);
+    storeToken(data.access_token, data.expires_in, data.refresh_token);
     await initApp();
   } catch (e) {
     showAuthScreen('Sign-in failed: ' + e.message);
   }
 }
 
-function storeToken(token, expiresIn) {
+function storeToken(token, expiresIn, refreshToken) {
   accessToken = token;
   tokenExpiry = Date.now() + (expiresIn - 60) * 1000;
   localStorage.setItem('access_token', token);
   localStorage.setItem('token_expiry', tokenExpiry);
+  if (refreshToken) localStorage.setItem('refresh_token', refreshToken);
 }
 
 function loadStoredToken() {
   const t = localStorage.getItem('access_token');
   const e = parseInt(localStorage.getItem('token_expiry') || '0');
   if (t && e > Date.now()) { accessToken = t; tokenExpiry = e; return true; }
-  return false;
+  // Even if access token is expired, we may still have a refresh token
+  return !!localStorage.getItem('refresh_token');
 }
 
 function isTokenValid() { return accessToken && Date.now() < tokenExpiry; }
 
-async function apiGet(url) {
-  if (!isTokenValid()) {
+async function silentRefresh() {
+  const refreshToken = localStorage.getItem('refresh_token');
+  if (!refreshToken) {
     localStorage.removeItem('access_token');
     localStorage.removeItem('token_expiry');
     showAuthScreen('Session expired — please sign in again.');
     throw new Error('token_expired');
   }
+  const resp = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id:     CLIENT_ID,
+      client_secret: CLIENT_SECRET,
+      refresh_token: refreshToken,
+      grant_type:    'refresh_token',
+    }),
+  });
+  const data = await resp.json();
+  if (data.error) {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('token_expiry');
+    localStorage.removeItem('refresh_token');
+    showAuthScreen('Session expired — please sign in again.');
+    throw new Error('token_expired');
+  }
+  storeToken(data.access_token, data.expires_in, data.refresh_token);
+}
+
+async function ensureToken() {
+  if (!isTokenValid()) await silentRefresh();
+}
+
+async function apiGet(url) {
+  await ensureToken();
   const resp = await fetch(url, { headers: { Authorization: 'Bearer ' + accessToken } });
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}));
@@ -1090,12 +1120,7 @@ async function apiGet(url) {
 }
 
 async function apiWrite(method, url, body) {
-  if (!isTokenValid()) {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('token_expiry');
-    showAuthScreen('Session expired — please sign in again.');
-    throw new Error('token_expired');
-  }
+  await ensureToken();
   const opts = { method, headers: { Authorization: 'Bearer ' + accessToken } };
   if (body !== undefined) {
     opts.headers['Content-Type'] = 'application/json';
@@ -2124,8 +2149,10 @@ document.getElementById('gear-btn').addEventListener('click', openSettings);
 document.getElementById('settings-backdrop').addEventListener('click', e => { if (e.target === e.currentTarget) closeSettings(); });
 document.getElementById('signin-btn').addEventListener('click', startLogin);
 document.getElementById('signout-btn').addEventListener('click', () => {
-  sessionStorage.removeItem('access_token');
-  sessionStorage.removeItem('token_expiry');
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('token_expiry');
+  localStorage.removeItem('refresh_token');
+  accessToken = null; tokenExpiry = 0;
   showAuthScreen();
 });
 document.getElementById('refresh-btn').addEventListener('click', refreshEvents);
