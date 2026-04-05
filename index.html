@@ -776,6 +776,68 @@ body.dark .settings-row { border-bottom-color: #2a2a3a; }
 }
 .resize-handle.top { top: 0; border-radius: 6px 6px 0 0; }
 .resize-handle.bottom { bottom: 0; border-radius: 0 0 6px 6px; }
+
+/* ── CLIENT VIEW ──────────────────────────────────────────────────────────── */
+.client-view-btn {
+  padding: 4px 10px;
+  border: 1px solid #c5d0de;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #444;
+  transition: background 0.15s, border-color 0.15s;
+}
+.client-view-btn:hover { background: #e8f0fe; border-color: #1a73e8; color: #1a73e8; }
+.client-view-btn.active { background: #1a73e8; border-color: #1a73e8; color: #fff; }
+body.dark .client-view-btn { background: #16213e; border-color: #2a3a5e; color: #c0c8d8; }
+body.dark .client-view-btn:hover { background: #1a2a5e; border-color: #4a7adf; color: #8ab4f8; }
+body.dark .client-view-btn.active { background: #1a73e8; border-color: #1a73e8; color: #fff; }
+
+/* Client toggle pills reuse .cal-toggle styles */
+
+/* Shared events row inside day col (client view) */
+.shared-row {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 2px 3px;
+  border-bottom: 1px solid #e0e0e0;
+  background: rgba(0,0,0,0.02);
+  min-height: 0;
+}
+body.dark .shared-row { border-bottom-color: #2a2a3a; background: rgba(255,255,255,0.02); }
+.shared-event-pill {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: default;
+  border-left: 3px solid transparent;
+}
+.shared-row-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #999;
+  padding: 1px 2px 0;
+}
+@media (max-width: 600px) {
+  .client-view-btn { padding: 4px 7px; }
+  .client-view-btn .btn-label { display: none; }
+}
 </style>
 </head>
 <body>
@@ -804,6 +866,9 @@ body.dark .settings-row { border-bottom-color: #2a2a3a; }
         <button class="view-btn active" data-view="3"><span class="vl">3 Days</span><span class="vs"></span></button>
         <button class="view-btn" data-view="7"><span class="vl">Week</span><span class="vs"></span></button>
       </div>
+      <button id="client-view-btn" class="client-view-btn" title="Switch to client view" style="display:none">
+        <span class="btn-icon">👤</span><span class="btn-label">By Client</span>
+      </button>
 
       <div class="nav-btns">
         <button class="nav-btn" id="prev-btn">&#8249;</button>
@@ -903,6 +968,14 @@ body.dark .settings-row { border-bottom-color: #2a2a3a; }
     </div>
 
     <div class="settings-section">
+      <h3>Client View</h3>
+      <div class="settings-row">
+        <span>Enable Client View</span>
+        <label class="toggle-switch"><input type="checkbox" id="client-view-enabled-chk"><span class="slider"></span></label>
+      </div>
+    </div>
+
+    <div class="settings-section">
       <h3>Permissions</h3>
       <div class="settings-row">
         <span>Allow Add</span>
@@ -946,17 +1019,23 @@ let cachedEvents = {};           // calId -> [event, ...]
 let viewDays     = 3;
 let anchorDate   = startOfToday();
 let permissions  = { add: false, edit: false, move: false, delete: false };
+let clientViewEnabled = false; // gated by settings toggle
+let clientViewMode    = false; // active client view toggle
+let activeClients     = new Set(); // client names visible in client view
 
 // ── PREFERENCES (localStorage) ───────────────────────────────────────────────
 const PREF_KEY = 'calview_prefs';
 function savePrefs() {
   localStorage.setItem(PREF_KEY, JSON.stringify({
-    darkMode:         document.body.classList.contains('dark'),
+    darkMode:          document.body.classList.contains('dark'),
     viewDays,
-    calOrder:         calendarList.map(c => c.id),
-    activeCalendars:  [...activeCalendars],
-    enabledCalendars: [...enabledCalendars],
+    calOrder:          calendarList.map(c => c.id),
+    activeCalendars:   [...activeCalendars],
+    enabledCalendars:  [...enabledCalendars],
     permissions,
+    clientViewEnabled,
+    clientViewMode,
+    activeClients:     [...activeClients],
   }));
 }
 function loadPrefs() {
@@ -1234,10 +1313,14 @@ async function initApp() {
       calendarList = ordered;
     }
     if (prefs.permissions) permissions = { ...permissions, ...prefs.permissions };
+    if (prefs.clientViewEnabled) clientViewEnabled = true;
+    if (prefs.clientViewMode)    clientViewMode    = true;
+    if (prefs.activeClients)     activeClients     = new Set(prefs.activeClients);
   } else {
     enabledCalendars = new Set(allIds);
     activeCalendars  = new Set(allIds);
   }
+  updateClientViewBtn();
   renderToggles();
 
   await refreshEvents();
@@ -1265,6 +1348,7 @@ async function refreshEvents() {
 let dragSrcCalId = null;
 
 function renderToggles() {
+  if (clientViewEnabled && clientViewMode) { renderClientToggles(); return; }
   const container = document.getElementById('cal-toggles');
   container.innerHTML = '';
   calendarList.filter(c => enabledCalendars.has(c.id)).forEach(cal => {
@@ -1362,6 +1446,7 @@ function layoutEvents(events) {
 }
 
 function renderGrid() {
+  if (clientViewEnabled && clientViewMode) { renderClientGrid(); return; }
   const grid = document.getElementById('cal-grid');
   grid.innerHTML = '';
 
@@ -1609,6 +1694,260 @@ function parseEventTitle(title) {
     therapyType: parts[1]?.trim() || title,
   };
 }
+
+// ── CLIENT VIEW (isolated) ────────────────────────────────────────────────────
+function cvGetClientName(ev) {
+  return ev.title.split(' - ')[0]?.trim() || ev.title;
+}
+
+function cvIsShared(ev) {
+  const p0 = ev.title.split(' - ')[0] || '';
+  return p0.includes(',') || p0.includes('++');
+}
+
+function cvGetAllClients() {
+  const names = new Set();
+  for (const evs of Object.values(cachedEvents)) {
+    for (const ev of evs) {
+      if (!cvIsShared(ev)) names.add(cvGetClientName(ev));
+    }
+  }
+  return [...names].sort();
+}
+
+// Stable hue from a string for consistent client pill colors
+function cvColorForName(name) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffffffff;
+  const hue = Math.abs(h) % 360;
+  return `hsl(${hue},55%,45%)`;
+}
+
+function updateClientViewBtn() {
+  const btn = document.getElementById('client-view-btn');
+  if (!btn) return;
+  btn.style.display = clientViewEnabled ? '' : 'none';
+  btn.classList.toggle('active', clientViewMode);
+}
+
+function renderClientGrid() {
+  const grid = document.getElementById('cal-grid');
+  grid.innerHTML = '';
+
+  const allClients = cvGetAllClients();
+  // Seed activeClients with all if empty (first time entering client view)
+  if (activeClients.size === 0) activeClients = new Set(allClients);
+  const visibleClients = allClients.filter(c => activeClients.has(c));
+
+  if (!visibleClients.length) {
+    grid.innerHTML = '<div style="padding:40px;text-align:center;color:#999">No clients found. Toggle on at least one client above.</div>';
+    updateDateLabel();
+    return;
+  }
+
+  const viewStart = getViewStart();
+  const days = Array.from({ length: viewDays }, (_, i) => addDays(viewStart, i));
+  updateDateLabel(days);
+
+  const hourPx   = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--hour-height')) || 64;
+  const pxPerMin = hourPx / 60;
+
+  // Day header row
+  const hRow = document.createElement('div');
+  hRow.className = 'day-header-row';
+  hRow.style.height = 'var(--header-height)';
+  hRow.appendChild(el('div', 'time-gutter-header'));
+  days.forEach(d => {
+    const dh = el('div', 'day-col-header' + (isToday(d) ? ' today' : ''));
+    dh.innerHTML = `<div class="day-pill"><span class="day-label">${DAY_ABBR[d.getDay()]}</span><span class="day-number">${d.getDate()}</span></div>`;
+    hRow.appendChild(dh);
+  });
+  grid.appendChild(hRow);
+
+  // Lane labels row (client names)
+  const llRow = document.createElement('div');
+  llRow.className = 'lane-labels-row';
+  llRow.appendChild(el('div', 'time-gutter-spacer'));
+  days.forEach(() => {
+    const lld = el('div', 'lane-labels-day');
+    visibleClients.forEach(name => {
+      const ll = el('div', 'lane-label');
+      ll.textContent = name;
+      const col = cvColorForName(name);
+      ll.style.color      = col;
+      ll.style.background = col.replace('hsl(', 'hsla(').replace(')', ',0.08)');
+      lld.appendChild(ll);
+    });
+    llRow.appendChild(lld);
+  });
+  grid.appendChild(llRow);
+
+  // Body
+  const body = el('div', 'cal-body');
+
+  // Time gutter
+  const tg = el('div', 'time-gutter');
+  for (let h = START_HOUR; h <= END_HOUR; h++) {
+    const ts = el('div', 'time-slot');
+    if (h < END_HOUR) {
+      const lbl = h === 12 ? '12 PM' : h > 12 ? `${h-12} PM` : `${h} AM`;
+      ts.innerHTML = `<span>${lbl}</span>`;
+    }
+    tg.appendChild(ts);
+  }
+  body.appendChild(tg);
+
+  // Days area
+  const daysArea = el('div', 'days-area');
+  days.forEach(d => {
+    const dateStr  = fmtDate(d);
+    const dayCol   = el('div', 'day-col' + (isToday(d) ? ' today-col' : ''));
+    const totalH   = TOTAL_HRS * hourPx;
+    dayCol.style.minHeight = totalH + 'px';
+
+    // Hour lines
+    const hl = el('div', 'hour-lines');
+    for (let h = 0; h < TOTAL_HRS; h++) {
+      const line = el('div', 'hour-line major'); line.style.top = (h * hourPx) + 'px'; hl.appendChild(line);
+      const half = el('div', 'half-line');       half.style.top = (h * hourPx + hourPx/2) + 'px'; hl.appendChild(half);
+    }
+    dayCol.appendChild(hl);
+
+    // Collect all events for this day across all calendars
+    const allDayEvs = Object.entries(cachedEvents).flatMap(([calId, evs]) =>
+      evs.filter(ev => fmtDate(ev.start) === dateStr).map(ev => ({ ev, calId }))
+    );
+
+    // Shared events row (Group, Lunch, etc.)
+    const sharedEvs = allDayEvs.filter(({ ev }) => cvIsShared(ev));
+    if (sharedEvs.length) {
+      const sharedRow = el('div', 'shared-row');
+      const lbl = el('div', 'shared-row-label');
+      lbl.textContent = 'Shared';
+      sharedRow.appendChild(lbl);
+      sharedEvs.forEach(({ ev, calId }) => {
+        const cal   = calendarList.find(c => c.id === calId);
+        const color = cal?.backgroundColor || '#4285f4';
+        const pill  = el('div', 'shared-event-pill');
+        pill.style.background      = color + '22';
+        pill.style.color           = document.body.classList.contains('dark') ? color : darkenColor(color, 0.45);
+        pill.style.borderLeftColor = color;
+        const isPast = ev.end < new Date();
+        if (isPast) pill.style.opacity = '0.45';
+        pill.textContent = `${fmtTime(ev.start)}–${fmtTime(ev.end)}  ${ev.title}`;
+        pill.title = ev.title;
+        pill.addEventListener('mouseenter', e => showTooltip(e, ev, cal || { summary: '' }));
+        pill.addEventListener('mousemove',  e => moveTooltip(e));
+        pill.addEventListener('mouseleave', hideTooltip);
+        if (permissions.edit && cal) {
+          pill.style.cursor = 'pointer';
+          pill.addEventListener('click', e => { e.stopPropagation(); hideTooltip(); openEditModal(ev); });
+        }
+        sharedRow.appendChild(pill);
+      });
+      dayCol.appendChild(sharedRow);
+    }
+
+    // Client lanes
+    visibleClients.forEach(name => {
+      const lane     = el('div', 'lane-col');
+      lane.style.minHeight = totalH + 'px';
+
+      const clientEvs = allDayEvs
+        .filter(({ ev }) => !cvIsShared(ev) && cvGetClientName(ev) === name)
+        .map(({ ev }) => ev);
+      const laid = layoutEvents(clientEvs);
+      const col  = cvColorForName(name);
+
+      laid.forEach(({ ev, col: laneCol, numCols }) => {
+        const calEntry = calendarList.find(c => c.id === ev.calId);
+        const color    = calEntry?.backgroundColor || '#4285f4';
+        const startMins = (ev.start.getHours() - START_HOUR) * 60 + ev.start.getMinutes();
+        const endMins   = (ev.end.getHours()   - START_HOUR) * 60 + ev.end.getMinutes();
+        const top    = Math.max(0, startMins * pxPerMin);
+        const height = Math.max(20, (endMins - startMins) * pxPerMin - 2);
+        const isPast = ev.end < new Date();
+
+        const evEl = el('div', ev.isTentative ? 'event tentative' : 'event');
+        evEl.style.top             = top + 'px';
+        evEl.style.height          = height + 'px';
+        evEl.style.background      = color + '22';
+        evEl.style.color           = document.body.classList.contains('dark') ? color : darkenColor(color, 0.45);
+        evEl.style.borderLeftColor = color;
+        if (ev.isTentative) evEl.style.borderLeftStyle = 'dashed';
+        if (isPast) evEl.style.opacity = '0.45';
+
+        const g = 2, pct = 100 / numCols;
+        evEl.style.left  = `calc(${laneCol * pct}% + ${g}px)`;
+        evEl.style.width = `calc(${pct}% - ${g * 2}px)`;
+
+        const dur = endMins - startMins;
+        evEl.innerHTML = dur >= 30
+          ? `<div class="ev-title">${escHtml(ev.title)}</div><div class="ev-time">${fmtTime(ev.start)}–${fmtTime(ev.end)}</div>`
+          : `<div class="ev-title">${escHtml(ev.title)}</div>`;
+
+        evEl.addEventListener('mouseenter', e => showTooltip(e, ev, calEntry || { summary: '' }));
+        evEl.addEventListener('mousemove',  e => moveTooltip(e));
+        evEl.addEventListener('mouseleave', hideTooltip);
+        if (permissions.edit && calEntry) {
+          evEl.addEventListener('click', e => { e.stopPropagation(); hideTooltip(); openEditModal(ev); });
+          evEl.style.cursor = 'pointer';
+        }
+        lane.appendChild(evEl);
+      });
+
+      dayCol.appendChild(lane);
+    });
+
+    daysArea.appendChild(dayCol);
+  });
+
+  // Now-line
+  if (days.some(d => isToday(d))) {
+    const now = new Date();
+    const nowMins = (now.getHours() - START_HOUR) * 60 + now.getMinutes();
+    if (nowMins >= 0 && nowMins <= TOTAL_HRS * 60) {
+      const nl = el('div', 'now-line');
+      nl.style.top = (nowMins * pxPerMin) + 'px';
+      daysArea.style.position = 'relative';
+      daysArea.appendChild(nl);
+    }
+  }
+
+  body.appendChild(daysArea);
+  grid.appendChild(body);
+
+  const container = document.getElementById('cal-container');
+  container.scrollTop = (8 - START_HOUR) * 60 * pxPerMin + 86;
+}
+
+function renderClientToggles() {
+  const container = document.getElementById('cal-toggles');
+  container.innerHTML = '';
+  const allClients = cvGetAllClients();
+  if (activeClients.size === 0) activeClients = new Set(allClients);
+
+  allClients.forEach(name => {
+    const col  = cvColorForName(name);
+    const pill = document.createElement('div');
+    pill.className = 'cal-toggle' + (activeClients.has(name) ? '' : ' off');
+    pill.style.cssText = `background:${col.replace('hsl(','hsla(').replace(')',',0.15)')}; color:${col}; border-color:${col};`;
+    pill.innerHTML = `<span class="dot" style="background:${col}"></span>${escHtml(name)}`;
+    pill.addEventListener('click', () => {
+      if (activeClients.has(name)) {
+        activeClients.delete(name);
+        pill.classList.add('off');
+      } else {
+        activeClients.add(name);
+        pill.classList.remove('off');
+      }
+      savePrefs();
+      renderGrid();
+    });
+    container.appendChild(pill);
+  });
+}
+// ── END CLIENT VIEW ───────────────────────────────────────────────────────────
 
 function buildReminderMessage(clickedEv, dayDate, allDayEvents) {
   const pad = n => String(n).padStart(2, '0');
@@ -1940,6 +2279,9 @@ function openSettings() {
     list.appendChild(row);
   });
 
+  // Populate client view toggle
+  document.getElementById('client-view-enabled-chk').checked = clientViewEnabled;
+
   // Populate permissions
   document.getElementById('perm-add').checked    = permissions.add;
   document.getElementById('perm-edit').checked   = permissions.edit;
@@ -2169,6 +2511,23 @@ document.getElementById('signout-btn').addEventListener('click', () => {
   showAuthScreen();
 });
 document.getElementById('refresh-btn').addEventListener('click', refreshEvents);
+
+document.getElementById('client-view-btn').addEventListener('click', () => {
+  clientViewMode = !clientViewMode;
+  updateClientViewBtn();
+  savePrefs();
+  renderToggles();
+  renderGrid();
+});
+
+document.getElementById('client-view-enabled-chk').addEventListener('change', e => {
+  clientViewEnabled = e.target.checked;
+  if (!clientViewEnabled) clientViewMode = false;
+  updateClientViewBtn();
+  savePrefs();
+  renderToggles();
+  renderGrid();
+});
 
 document.querySelectorAll('.view-btn').forEach(btn => {
   btn.addEventListener('click', () => {
