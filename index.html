@@ -1820,23 +1820,6 @@ function renderClientGrid() {
     ));
   });
 
-  // Lane labels row (client names — only those present that day)
-  const llRow = document.createElement('div');
-  llRow.className = 'lane-labels-row';
-  llRow.appendChild(el('div', 'time-gutter-spacer'));
-  days.forEach(d => {
-    const lld = el('div', 'lane-labels-day');
-    (clientsByDay.get(fmtDate(d)) || []).forEach(name => {
-      const ll = el('div', 'lane-label');
-      ll.textContent = name;
-      const col = cvColorForName(name);
-      ll.style.color      = col;
-      ll.style.background = col.replace('hsl(', 'hsla(').replace(')', ',0.08)');
-      lld.appendChild(ll);
-    });
-    llRow.appendChild(lld);
-  });
-  grid.appendChild(llRow);
 
   // Body
   const body = el('div', 'cal-body');
@@ -2118,21 +2101,7 @@ function renderSingleClientGrid() {
   });
   grid.appendChild(hRow);
 
-  // Lane labels row — one column per day labelled with the client name
   const col = cvColorForName(singleClientName);
-  const llRow = document.createElement('div');
-  llRow.className = 'lane-labels-row';
-  llRow.appendChild(el('div', 'time-gutter-spacer'));
-  days.forEach(() => {
-    const lld = el('div', 'lane-labels-day');
-    const ll  = el('div', 'lane-label');
-    ll.textContent  = singleClientName;
-    ll.style.color      = col;
-    ll.style.background = col.replace('hsl(', 'hsla(').replace(')', ',0.08)');
-    lld.appendChild(ll);
-    llRow.appendChild(lld);
-  });
-  grid.appendChild(llRow);
 
   // Body
   const body = el('div', 'cal-body');
