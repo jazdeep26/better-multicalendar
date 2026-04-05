@@ -1992,9 +1992,17 @@ function buildReminderMessage(clickedEv, dayDate, allDayEvents) {
   else if (dayFmt === fmtDate(tomorrow)) whenWord = `tomorrow (${dayAbbr}, ${d} ${monAbbr})`;
   else                                   whenWord = `on ${dayAbbr}, ${d} ${monAbbr}`;
 
-  // Collect only this child's events for the day, in order
+  // Collect this child's events: direct match OR shared (Group/Lunch) that lists this child
   const childEvs = allDayEvents
-    .filter(ev => parseEventTitle(ev.title).childName === childName)
+    .filter(ev => {
+      const { childName: p0 } = parseEventTitle(ev.title);
+      if (p0 === childName) return true;
+      // Shared event: parts[0] is a comma-separated list — check if childName is in it
+      if (cvIsShared(ev)) {
+        return p0.split(',').map(s => s.trim()).some(n => n === childName);
+      }
+      return false;
+    })
     .sort((a, b) => a.start - b.start);
 
   const lines = childEvs.map(ev => {
