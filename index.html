@@ -799,6 +799,8 @@ body.dark .client-view-btn:hover { background: #1a2a5e; border-color: #4a7adf; c
 body.dark .client-view-btn.active { background: #1a73e8; border-color: #1a73e8; color: #fff; }
 
 /* Client toggle pills reuse .cal-toggle styles */
+/* Shared events span all client lanes absolutely */
+.cv-shared-event { position: absolute !important; pointer-events: auto; }
 
 /* Shared events row inside day col (client view) */
 .shared-row {
@@ -1764,13 +1766,23 @@ function renderClientGrid() {
   });
   grid.appendChild(hRow);
 
-  // Lane labels row (client names)
+  // Precompute which clients appear on each day (for labels + lane filtering)
+  const clientsByDay = new Map();
+  days.forEach(d => {
+    const dateStr = fmtDate(d);
+    const dayEvs = Object.values(cachedEvents).flat().filter(ev => fmtDate(ev.start) === dateStr);
+    clientsByDay.set(dateStr, visibleClients.filter(name =>
+      dayEvs.some(ev => !cvIsShared(ev) && cvGetClientName(ev) === name)
+    ));
+  });
+
+  // Lane labels row (client names — only those present that day)
   const llRow = document.createElement('div');
   llRow.className = 'lane-labels-row';
   llRow.appendChild(el('div', 'time-gutter-spacer'));
-  days.forEach(() => {
+  days.forEach(d => {
     const lld = el('div', 'lane-labels-day');
-    visibleClients.forEach(name => {
+    (clientsByDay.get(fmtDate(d)) || []).forEach(name => {
       const ll = el('div', 'lane-label');
       ll.textContent = name;
       const col = cvColorForName(name);
@@ -1818,38 +1830,15 @@ function renderClientGrid() {
       evs.filter(ev => fmtDate(ev.start) === dateStr).map(ev => ({ ev, calId }))
     );
 
-    // Shared events row (Group, Lunch, etc.)
-    const sharedEvs = allDayEvs.filter(({ ev }) => cvIsShared(ev));
-    if (sharedEvs.length) {
-      const sharedRow = el('div', 'shared-row');
-      const lbl = el('div', 'shared-row-label');
-      lbl.textContent = 'Shared';
-      sharedRow.appendChild(lbl);
-      sharedEvs.forEach(({ ev, calId }) => {
-        const cal   = calendarList.find(c => c.id === calId);
-        const color = cal?.backgroundColor || '#4285f4';
-        const pill  = el('div', 'shared-event-pill');
-        pill.style.background      = color + '22';
-        pill.style.color           = document.body.classList.contains('dark') ? color : darkenColor(color, 0.45);
-        pill.style.borderLeftColor = color;
-        const isPast = ev.end < new Date();
-        if (isPast) pill.style.opacity = '0.45';
-        pill.textContent = `${fmtTime(ev.start)}–${fmtTime(ev.end)}  ${ev.title}`;
-        pill.title = ev.title;
-        pill.addEventListener('mouseenter', e => showTooltip(e, ev, cal || { summary: '' }));
-        pill.addEventListener('mousemove',  e => moveTooltip(e));
-        pill.addEventListener('mouseleave', hideTooltip);
-        if (permissions.edit && cal) {
-          pill.style.cursor = 'pointer';
-          pill.addEventListener('click', e => { e.stopPropagation(); hideTooltip(); openEditModal(ev); });
-        }
-        sharedRow.appendChild(pill);
-      });
-      dayCol.appendChild(sharedRow);
-    }
+    // Only show clients that have at least one non-shared event today
+    const clientsToday = clientsByDay.get(dateStr) || [];
+
+    // Lane area (position:relative so shared events can span it absolutely)
+    const lanesWrap = el('div', 'cv-lanes-wrap');
+    lanesWrap.style.cssText = `position:relative; display:flex; flex:1; min-height:${totalH}px;`;
 
     // Client lanes
-    visibleClients.forEach(name => {
+    clientsToday.forEach(name => {
       const lane     = el('div', 'lane-col');
       lane.style.minHeight = totalH + 'px';
 
@@ -1896,9 +1885,45 @@ function renderClientGrid() {
         lane.appendChild(evEl);
       });
 
-      dayCol.appendChild(lane);
+      lanesWrap.appendChild(lane);
     });
 
+    // Shared events (Group/Lunch) — absolutely positioned spanning all client lanes
+    const sharedEvs = allDayEvs.filter(({ ev }) => cvIsShared(ev));
+    sharedEvs.forEach(({ ev, calId }) => {
+      const cal   = calendarList.find(c => c.id === calId);
+      const color = cal?.backgroundColor || '#4285f4';
+      const startMins = (ev.start.getHours() - START_HOUR) * 60 + ev.start.getMinutes();
+      const endMins   = (ev.end.getHours()   - START_HOUR) * 60 + ev.end.getMinutes();
+      const top    = Math.max(0, startMins * pxPerMin);
+      const height = Math.max(20, (endMins - startMins) * pxPerMin - 2);
+      const isPast = ev.end < new Date();
+
+      const evEl = el('div', ev.isTentative ? 'event tentative cv-shared-event' : 'event cv-shared-event');
+      evEl.style.cssText += `top:${top}px; height:${height}px; left:2px; right:2px; width:auto;`;
+      evEl.style.background      = color + '33';
+      evEl.style.color           = document.body.classList.contains('dark') ? color : darkenColor(color, 0.45);
+      evEl.style.borderLeftColor = color;
+      evEl.style.zIndex          = '1';
+      if (ev.isTentative) evEl.style.borderLeftStyle = 'dashed';
+      if (isPast) evEl.style.opacity = '0.45';
+
+      const dur = endMins - startMins;
+      evEl.innerHTML = dur >= 30
+        ? `<div class="ev-title">${escHtml(ev.title)}</div><div class="ev-time">${fmtTime(ev.start)}–${fmtTime(ev.end)}</div>`
+        : `<div class="ev-title">${escHtml(ev.title)}</div>`;
+
+      evEl.addEventListener('mouseenter', e => showTooltip(e, ev, cal || { summary: '' }));
+      evEl.addEventListener('mousemove',  e => moveTooltip(e));
+      evEl.addEventListener('mouseleave', hideTooltip);
+      if (permissions.edit && cal) {
+        evEl.style.cursor = 'pointer';
+        evEl.addEventListener('click', e => { e.stopPropagation(); hideTooltip(); openEditModal(ev); });
+      }
+      lanesWrap.appendChild(evEl);
+    });
+
+    dayCol.appendChild(lanesWrap);
     daysArea.appendChild(dayCol);
   });
 
