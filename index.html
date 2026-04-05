@@ -1052,6 +1052,7 @@ let singleClientEnabled = false;   // gated by settings toggle
 let singleClientMode    = false;   // active when "One Client" button is on
 let singleClientName    = '';      // selected client name
 let singleClientFilter  = new Set(); // session types (therapyType) to show
+let singleClientHideTherapist = false; // strip therapist name from display title
 
 // ── PREFERENCES (localStorage) ───────────────────────────────────────────────
 const PREF_KEY = 'calview_prefs';
@@ -1070,6 +1071,7 @@ function savePrefs() {
     singleClientMode,
     singleClientName,
     singleClientFilter:  [...singleClientFilter],
+    singleClientHideTherapist,
   }));
 }
 function loadPrefs() {
@@ -1353,7 +1355,8 @@ async function initApp() {
     if (prefs.singleClientEnabled) singleClientEnabled = true;
     if (prefs.singleClientMode)    singleClientMode    = true;
     if (prefs.singleClientName)    singleClientName    = prefs.singleClientName;
-    if (prefs.singleClientFilter)  singleClientFilter  = new Set(prefs.singleClientFilter);
+    if (prefs.singleClientFilter)       singleClientFilter       = new Set(prefs.singleClientFilter);
+    if (prefs.singleClientHideTherapist) singleClientHideTherapist = true;
   } else {
     enabledCalendars = new Set(allIds);
     activeCalendars  = new Set(allIds);
@@ -2070,6 +2073,21 @@ function renderSingleClientToggles() {
     });
     container.appendChild(pill);
   });
+
+  // "Hide therapist" checkbox
+  const chkWrap = document.createElement('label');
+  chkWrap.style.cssText = 'display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#666;cursor:pointer;white-space:nowrap;margin-left:4px;';
+  const chk = document.createElement('input');
+  chk.type = 'checkbox';
+  chk.checked = singleClientHideTherapist;
+  chk.addEventListener('change', () => {
+    singleClientHideTherapist = chk.checked;
+    savePrefs();
+    renderGrid();
+  });
+  chkWrap.appendChild(chk);
+  chkWrap.appendChild(document.createTextNode('Hide therapist'));
+  container.appendChild(chkWrap);
 }
 
 function renderSingleClientGrid() {
@@ -2182,8 +2200,13 @@ function renderSingleClientGrid() {
       evEl.style.left  = `calc(${laneCol * pct}% + ${g}px)`;
       evEl.style.width = `calc(${pct}% - ${g * 2}px)`;
 
-      // For shared events, display just the therapy type (not full participant list)
-      const displayTitle = isShared ? (ev.title.split(' - ')[1]?.trim() || ev.title) : ev.title;
+      // For shared events show just therapy type; optionally strip therapist (parts[2])
+      const parts = ev.title.split(' - ');
+      const displayTitle = isShared
+        ? (parts[1]?.trim() || ev.title)
+        : (singleClientHideTherapist && parts.length > 2
+            ? parts.slice(0, 2).join(' - ')
+            : ev.title);
       const dur = endMins - startMins;
       evEl.innerHTML = dur >= 30
         ? `<div class="ev-title">${escHtml(displayTitle)}</div><div class="ev-time">${fmtTime(ev.start)}–${fmtTime(ev.end)}</div>`
