@@ -841,8 +841,39 @@ body.dark .client-view-btn:hover { background: #1a2a5e; border-color: #4a7adf; c
 body.dark .client-view-btn.active { background: #1a73e8; border-color: #1a73e8; color: #fff; }
 
 /* Client toggle pills reuse .cal-toggle styles */
-/* Shared events span all client lanes absolutely */
-.cv-shared-event { position: absolute !important; pointer-events: auto; }
+/* Shared/Group lane — dedicated leftmost column in client view */
+.cv-shared-lane {
+  flex: 0 0 100px;
+  min-width: 80px;
+  position: relative;
+  border-right: 2px solid #e0e0e0;
+  background: rgba(0,0,0,0.02);
+}
+body.dark .cv-shared-lane { border-right-color: #2a2a4a; background: rgba(255,255,255,0.02); }
+.cv-shared-lane-label {
+  flex: 0 0 100px;
+  min-width: 80px;
+  padding: 3px 4px;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  border-right: 2px solid #e0e0e0;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body.dark .cv-shared-lane-label { border-right-color: #2a2a4a; }
+.cv-shared-lane-header {
+  flex: 0 0 100px;
+  min-width: 80px;
+  border-right: 2px solid #e0e0e0;
+}
+body.dark .cv-shared-lane-header { border-right-color: #2a2a4a; }
+/* Shared events inside the dedicated lane — normal flow, not absolute */
+.cv-shared-event { position: absolute; pointer-events: auto; }
 
 /* Single client view — client selector dropdown */
 #single-client-select {
@@ -1101,6 +1132,7 @@ let singleClientMode    = false;   // active when "One Client" button is on
 let singleClientName    = '';      // selected client name
 let singleClientFilter  = new Set(); // session types (therapyType) to show
 let singleClientHideTherapist = false; // strip therapist name from display title
+let clientViewHideLabels = false;       // hide client-name labels row in By Client view
 let columnWidths = { '1': [], '3': [], '7': [] }; // per-view day column widths (px)
 let laneWidths   = { '1': [], '3': [], '7': [] }; // per-view calendar sub-column widths (px)
 
@@ -1122,6 +1154,7 @@ function savePrefs() {
     singleClientName,
     singleClientFilter:  [...singleClientFilter],
     singleClientHideTherapist,
+    clientViewHideLabels,
     columnWidths,
     laneWidths,
   }));
@@ -1597,6 +1630,7 @@ async function initApp() {
     if (prefs.singleClientName)    singleClientName    = prefs.singleClientName;
     if (prefs.singleClientFilter)       singleClientFilter       = new Set(prefs.singleClientFilter);
     if (prefs.singleClientHideTherapist) singleClientHideTherapist = true;
+    if (prefs.clientViewHideLabels) clientViewHideLabels = true;
     if (prefs.columnWidths && typeof prefs.columnWidths === 'object') {
       columnWidths = {
         '1': Array.isArray(prefs.columnWidths['1']) ? prefs.columnWidths['1'] : [],
@@ -2058,6 +2092,19 @@ function renderClientGrid() {
   const hourPx   = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--hour-height')) || 64;
   const pxPerMin = hourPx / 60;
 
+  // Precompute which clients appear on each day
+  const clientsByDay = new Map();
+  days.forEach(d => {
+    const dateStr = fmtDate(d);
+    const dayEvs = Object.values(cachedEvents).flat().filter(ev => fmtDate(ev.start) === dateStr);
+    clientsByDay.set(dateStr, visibleClients.filter(name =>
+      dayEvs.some(ev => !cvIsShared(ev) && cvGetClientName(ev) === name)
+    ));
+  });
+
+  // Check if there are any shared events at all (to decide whether to show shared lane)
+  const hasAnyShared = Object.values(cachedEvents).flat().some(ev => cvIsShared(ev));
+
   // Day header row
   const hRow = document.createElement('div');
   hRow.className = 'day-header-row';
@@ -2070,16 +2117,34 @@ function renderClientGrid() {
   });
   grid.appendChild(hRow);
 
-  // Precompute which clients appear on each day (for labels + lane filtering)
-  const clientsByDay = new Map();
-  days.forEach(d => {
-    const dateStr = fmtDate(d);
-    const dayEvs = Object.values(cachedEvents).flat().filter(ev => fmtDate(ev.start) === dateStr);
-    clientsByDay.set(dateStr, visibleClients.filter(name =>
-      dayEvs.some(ev => !cvIsShared(ev) && cvGetClientName(ev) === name)
-    ));
-  });
-
+  // Client name labels row (like calendar labels in default view)
+  if (!clientViewHideLabels) {
+    const llRow = document.createElement('div');
+    llRow.className = 'lane-labels-row';
+    llRow.appendChild(el('div', 'time-gutter-spacer'));
+    days.forEach(d => {
+      const dateStr = fmtDate(d);
+      const lld = el('div', 'lane-labels-day');
+      const clientsToday = clientsByDay.get(dateStr) || [];
+      // Shared lane label
+      if (hasAnyShared) {
+        const sl = el('div', 'cv-shared-lane-label');
+        sl.textContent = 'Group';
+        lld.appendChild(sl);
+      }
+      // Client lane labels
+      clientsToday.forEach(name => {
+        const ll = el('div', 'lane-label');
+        ll.textContent = name;
+        const col = cvColorForName(name);
+        ll.style.color      = col;
+        ll.style.background = col.replace('hsl(','hsla(').replace(')',',0.1)');
+        lld.appendChild(ll);
+      });
+      llRow.appendChild(lld);
+    });
+    grid.appendChild(llRow);
+  }
 
   // Body
   const body = el('div', 'cal-body');
@@ -2117,23 +2182,68 @@ function renderClientGrid() {
       evs.filter(ev => fmtDate(ev.start) === dateStr).map(ev => ({ ev, calId }))
     );
 
-    // Only show clients that have at least one non-shared event today
     const clientsToday = clientsByDay.get(dateStr) || [];
 
-    // Lane area (position:relative so shared events can span it absolutely)
-    const lanesWrap = el('div', 'cv-lanes-wrap');
-    lanesWrap.style.cssText = `position:relative; display:flex; flex:1; min-height:${totalH}px;`;
+    // Dedicated shared/group lane (leftmost)
+    if (hasAnyShared) {
+      const sharedLane = el('div', 'cv-shared-lane');
+      sharedLane.style.minHeight = totalH + 'px';
+
+      const sharedEvs = allDayEvs.filter(({ ev }) => cvIsShared(ev));
+      const sharedEvList = sharedEvs.map(x => x.ev);
+      const laid = layoutEvents(sharedEvList);
+
+      laid.forEach(({ ev, col: laneCol, numCols }) => {
+        const { calId } = sharedEvs.find(x => x.ev === ev) || {};
+        const cal   = calendarList.find(c => c.id === (calId || ev.calId));
+        const color = cal?.backgroundColor || '#4285f4';
+        const startMins = (ev.start.getHours() - START_HOUR) * 60 + ev.start.getMinutes();
+        const endMins   = (ev.end.getHours()   - START_HOUR) * 60 + ev.end.getMinutes();
+        const top    = Math.max(0, startMins * pxPerMin);
+        const height = Math.max(20, (endMins - startMins) * pxPerMin - 2);
+        const isPast = ev.end < new Date();
+
+        const evEl = el('div', ev.isTentative ? 'event tentative cv-shared-event' : 'event cv-shared-event');
+        evEl.style.top             = top + 'px';
+        evEl.style.height          = height + 'px';
+        evEl.style.background      = color + '33';
+        evEl.style.color           = document.body.classList.contains('dark') ? color : darkenColor(color, 0.45);
+        evEl.style.borderLeftColor = color;
+        evEl.style.zIndex          = '1';
+        if (ev.isTentative) evEl.style.borderLeftStyle = 'dashed';
+        if (isPast) evEl.style.opacity = '0.45';
+
+        const g = 2, pct = 100 / numCols;
+        evEl.style.left  = `calc(${laneCol * pct}% + ${g}px)`;
+        evEl.style.width = `calc(${pct}% - ${g * 2}px)`;
+
+        const dur = endMins - startMins;
+        evEl.innerHTML = dur >= 30
+          ? `<div class="ev-title">${escHtml(ev.title)}</div><div class="ev-time">${fmtTime(ev.start)}–${fmtTime(ev.end)}</div>`
+          : `<div class="ev-title">${escHtml(ev.title)}</div>`;
+
+        evEl.addEventListener('mouseenter', e => showTooltip(e, ev, cal || { summary: '' }));
+        evEl.addEventListener('mousemove',  e => moveTooltip(e));
+        evEl.addEventListener('mouseleave', hideTooltip);
+        if (permissions.edit && cal) {
+          evEl.style.cursor = 'pointer';
+          evEl.addEventListener('click', e => { e.stopPropagation(); hideTooltip(); openEditModal(ev); });
+        }
+        sharedLane.appendChild(evEl);
+      });
+
+      dayCol.appendChild(sharedLane);
+    }
 
     // Client lanes
     clientsToday.forEach(name => {
-      const lane     = el('div', 'lane-col');
+      const lane = el('div', 'lane-col');
       lane.style.minHeight = totalH + 'px';
 
       const clientEvs = allDayEvs
         .filter(({ ev }) => !cvIsShared(ev) && cvGetClientName(ev) === name)
         .map(({ ev }) => ev);
       const laid = layoutEvents(clientEvs);
-      const col  = cvColorForName(name);
 
       laid.forEach(({ ev, col: laneCol, numCols }) => {
         const calEntry = calendarList.find(c => c.id === ev.calId);
@@ -2172,45 +2282,9 @@ function renderClientGrid() {
         lane.appendChild(evEl);
       });
 
-      lanesWrap.appendChild(lane);
+      dayCol.appendChild(lane);
     });
 
-    // Shared events (Group/Lunch) — absolutely positioned spanning all client lanes
-    const sharedEvs = allDayEvs.filter(({ ev }) => cvIsShared(ev));
-    sharedEvs.forEach(({ ev, calId }) => {
-      const cal   = calendarList.find(c => c.id === calId);
-      const color = cal?.backgroundColor || '#4285f4';
-      const startMins = (ev.start.getHours() - START_HOUR) * 60 + ev.start.getMinutes();
-      const endMins   = (ev.end.getHours()   - START_HOUR) * 60 + ev.end.getMinutes();
-      const top    = Math.max(0, startMins * pxPerMin);
-      const height = Math.max(20, (endMins - startMins) * pxPerMin - 2);
-      const isPast = ev.end < new Date();
-
-      const evEl = el('div', ev.isTentative ? 'event tentative cv-shared-event' : 'event cv-shared-event');
-      evEl.style.cssText += `top:${top}px; height:${height}px; left:2px; right:2px; width:auto;`;
-      evEl.style.background      = color + '33';
-      evEl.style.color           = document.body.classList.contains('dark') ? color : darkenColor(color, 0.45);
-      evEl.style.borderLeftColor = color;
-      evEl.style.zIndex          = '1';
-      if (ev.isTentative) evEl.style.borderLeftStyle = 'dashed';
-      if (isPast) evEl.style.opacity = '0.45';
-
-      const dur = endMins - startMins;
-      evEl.innerHTML = dur >= 30
-        ? `<div class="ev-title">${escHtml(ev.title)}</div><div class="ev-time">${fmtTime(ev.start)}–${fmtTime(ev.end)}</div>`
-        : `<div class="ev-title">${escHtml(ev.title)}</div>`;
-
-      evEl.addEventListener('mouseenter', e => showTooltip(e, ev, cal || { summary: '' }));
-      evEl.addEventListener('mousemove',  e => moveTooltip(e));
-      evEl.addEventListener('mouseleave', hideTooltip);
-      if (permissions.edit && cal) {
-        evEl.style.cursor = 'pointer';
-        evEl.addEventListener('click', e => { e.stopPropagation(); hideTooltip(); openEditModal(ev); });
-      }
-      lanesWrap.appendChild(evEl);
-    });
-
-    dayCol.appendChild(lanesWrap);
     daysArea.appendChild(dayCol);
   });
 
@@ -2260,6 +2334,21 @@ function renderClientToggles() {
     });
     container.appendChild(pill);
   });
+
+  // "Hide client names" checkbox
+  const chkWrap = document.createElement('label');
+  chkWrap.style.cssText = 'display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#666;cursor:pointer;white-space:nowrap;margin-left:4px;';
+  const chk = document.createElement('input');
+  chk.type = 'checkbox';
+  chk.checked = clientViewHideLabels;
+  chk.addEventListener('change', () => {
+    clientViewHideLabels = chk.checked;
+    savePrefs();
+    renderGrid();
+  });
+  chkWrap.appendChild(chk);
+  chkWrap.appendChild(document.createTextNode('Hide client names'));
+  container.appendChild(chkWrap);
 }
 // ── SINGLE CLIENT VIEW (isolated) ────────────────────────────────────────────
 function scvGetSessionTypes(clientName) {
