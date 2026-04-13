@@ -1,0 +1,5 @@
+# Unencrypted dashboard source — edit this locally, encrypt before committing
+dashboard_src.html
+
+# macOS
+.DS_Store
