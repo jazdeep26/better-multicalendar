@@ -1,0 +1,1319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Capybara Care — Revenue Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --green-dark:  #2d6a4f;
+      --green-mid:   #40916c;
+      --green-light: #74c69d;
+      --green-pale:  #d8f3dc;
+      --green-bg:    #f0faf4;
+      --white:       #ffffff;
+      --gray-50:     #f9fafb;
+      --gray-100:    #f3f4f6;
+      --gray-200:    #e5e7eb;
+      --gray-400:    #9ca3af;
+      --gray-600:    #4b5563;
+      --gray-800:    #1f2937;
+      --danger:      #dc2626;
+      --danger-bg:   #fff1f1;
+      --warning:     #d97706;
+      --shadow-sm:   0 1px 3px rgba(0,0,0,.08);
+      --radius:      12px;
+    }
+
+    body { font-family: 'Inter', sans-serif; background: var(--green-bg); color: var(--gray-800); min-height: 100vh; }
+
+    /* ── Header ── */
+    header {
+      background: var(--white);
+      border-bottom: 2px solid var(--green-pale);
+      padding: 12px 32px;
+      display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; z-index: 100;
+      box-shadow: var(--shadow-sm);
+    }
+    .header-left { display: flex; align-items: center; gap: 14px; }
+    header img.logo { height: 46px; width: auto; object-fit: contain; }
+    .header-title { display: flex; flex-direction: column; }
+    .header-title .brand { font-size: 17px; font-weight: 700; color: var(--green-dark); letter-spacing: -.3px; }
+    .header-title .sub   { font-size: 11px; color: var(--gray-400); font-weight: 500; text-transform: uppercase; letter-spacing: .5px; }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+    #last-updated { font-size: 12px; color: var(--gray-400); }
+    #refresh-btn {
+      background: var(--green-mid); color: var(--white);
+      border: none; border-radius: 8px; padding: 7px 14px;
+      font-size: 13px; font-weight: 600; cursor: pointer; transition: background .2s;
+    }
+    #refresh-btn:hover { background: var(--green-dark); }
+
+    /* ── Filters bar ── */
+    .filters-bar {
+      background: var(--white); border-bottom: 1px solid var(--gray-200);
+      padding: 10px 32px; display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
+    }
+    .filter-group { display: flex; align-items: center; gap: 8px; }
+    .filter-group label { font-size: 13px; font-weight: 500; color: var(--gray-600); }
+    .filter-group select {
+      border: 1px solid var(--gray-200); border-radius: 8px; padding: 5px 10px;
+      font-size: 13px; font-family: inherit; color: var(--gray-800);
+      background: var(--white); cursor: pointer; outline: none; transition: border-color .2s;
+    }
+    .filter-group select:focus { border-color: var(--green-mid); }
+
+    /* ── Tab nav ── */
+    .tab-nav {
+      background: var(--white); border-bottom: 1px solid var(--gray-200);
+      padding: 0 32px; display: flex; gap: 0;
+    }
+    .tab-btn {
+      padding: 13px 22px; font-size: 14px; font-weight: 600;
+      color: var(--gray-400); background: none; border: none;
+      border-bottom: 3px solid transparent; cursor: pointer;
+      font-family: inherit; transition: color .15s, border-color .15s;
+      margin-bottom: -1px;
+    }
+    .tab-btn:hover { color: var(--green-mid); }
+    .tab-btn.active { color: var(--green-dark); border-bottom-color: var(--green-mid); }
+
+    /* ── Tab panels ── */
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Main layout ── */
+    main { max-width: 1400px; margin: 0 auto; padding: 24px 32px 48px; }
+
+    /* ── KPI grid ── */
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-bottom: 24px; }
+    .kpi-card {
+      background: var(--white); border-radius: var(--radius);
+      padding: 18px 20px; box-shadow: var(--shadow-sm);
+      border-left: 4px solid var(--green-mid);
+      display: flex; flex-direction: column; gap: 5px;
+    }
+    .kpi-card.c1 { border-left-color: #1b4332; }
+    .kpi-card.c2 { border-left-color: #2d6a4f; }
+    .kpi-card.c3 { border-left-color: #40916c; }
+    .kpi-card.c4 { border-left-color: #52b788; }
+    .kpi-card.c5 { border-left-color: #74c69d; }
+    .kpi-card.c6 { border-left-color: #95d5b2; }
+    .kpi-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--gray-400); }
+    .kpi-value { font-size: 26px; font-weight: 700; color: var(--gray-800); line-height: 1.1; cursor: default; }
+    .kpi-sub   { font-size: 11px; color: var(--gray-400); }
+
+    /* ── Charts grid ── */
+    .charts-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 18px; margin-bottom: 24px; }
+    .chart-card { background: var(--white); border-radius: var(--radius); padding: 20px 22px; box-shadow: var(--shadow-sm); }
+    .chart-card.full { grid-column: 1/-1; }
+    .chart-title { font-size: 14px; font-weight: 600; color: var(--gray-800); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .chart-title .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green-mid); flex-shrink: 0; }
+    .chart-wrap { position: relative; height: 260px; }
+    .chart-wrap.tall { height: 320px; }
+
+    /* ── Table ── */
+    .table-card { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow-sm); overflow: hidden; }
+    .table-header {
+      padding: 16px 20px; border-bottom: 1px solid var(--gray-200);
+      display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+    }
+    .table-header h3 { font-size: 14px; font-weight: 600; }
+    .table-search {
+      border: 1px solid var(--gray-200); border-radius: 8px; padding: 6px 12px;
+      font-size: 13px; font-family: inherit; outline: none; width: 200px; transition: border-color .2s;
+    }
+    .table-search:focus { border-color: var(--green-mid); }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th {
+      background: var(--gray-50); padding: 9px 14px;
+      text-align: left; font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .5px; color: var(--gray-600);
+      border-bottom: 1px solid var(--gray-200); white-space: nowrap; cursor: pointer; user-select: none;
+    }
+    thead th:hover { color: var(--green-dark); }
+    thead th.sort-asc::after  { content: ' ▲'; font-size: 9px; }
+    thead th.sort-desc::after { content: ' ▼'; font-size: 9px; }
+    tbody tr { border-bottom: 1px solid var(--gray-100); transition: background .1s; }
+    tbody tr:hover { background: var(--green-bg); }
+    tbody td { padding: 9px 14px; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+    .badge-green  { background: var(--green-pale); color: var(--green-dark); }
+    .badge-red    { background: #fee2e2; color: var(--danger); }
+    .badge-orange { background: #fef3c7; color: var(--warning); }
+    .pagination {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; padding: 10px 18px; border-top: 1px solid var(--gray-100); flex-wrap: wrap;
+    }
+    .pagination-right { display: flex; align-items: center; gap: 8px; }
+    .pagination button {
+      background: var(--white); border: 1px solid var(--gray-200); border-radius: 6px;
+      padding: 5px 12px; font-size: 12px; cursor: pointer; font-family: inherit; transition: all .15s;
+    }
+    .pagination button:hover:not(:disabled) { background: var(--green-pale); border-color: var(--green-mid); }
+    .pagination button:disabled { opacity: .4; cursor: default; }
+    .pagination span { font-size: 12px; color: var(--gray-400); }
+    .page-size-group { display: flex; align-items: center; gap: 6px; }
+    .page-size-group label { font-size: 12px; color: var(--gray-400); }
+    .page-size-group select {
+      border: 1px solid var(--gray-200); border-radius: 6px; padding: 4px 8px;
+      font-size: 12px; font-family: inherit; background: var(--white); cursor: pointer; outline: none;
+    }
+    .page-size-group select:focus { border-color: var(--green-mid); }
+
+    /* ── Customer balance cell ── */
+    .balance-positive { color: var(--green-dark); font-weight: 600; }
+    .balance-negative { color: var(--danger); font-weight: 600; }
+
+    /* ── Share View modal ── */
+    #share-modal {
+      display: none; position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,.5); align-items: center; justify-content: center;
+    }
+    #share-modal.open { display: flex; }
+    .share-box {
+      background: var(--white); border-radius: var(--radius);
+      width: min(794px, 97vw); max-height: 94vh;
+      display: flex; flex-direction: column;
+      box-shadow: 0 24px 64px rgba(0,0,0,.28);
+    }
+    .share-toolbar {
+      padding: 12px 16px; border-bottom: 1px solid var(--gray-200);
+      display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; gap: 8px;
+    }
+    .share-toolbar h3 { font-size: 13px; font-weight: 600; color: var(--gray-800); }
+    .share-toolbar-right { display: flex; gap: 8px; align-items: center; }
+    .share-toolbar button {
+      border: 1px solid var(--gray-200); border-radius: 7px;
+      padding: 5px 13px; font-size: 12px; font-weight: 600; font-family: inherit;
+      cursor: pointer; background: var(--white); transition: all .15s;
+    }
+    .share-toolbar button:hover { background: var(--green-pale); border-color: var(--green-mid); }
+    .share-toolbar .btn-print { background: var(--green-mid); color: var(--white); border-color: var(--green-mid); }
+    .share-toolbar .btn-print:hover { background: var(--green-dark); border-color: var(--green-dark); }
+    .share-toolbar .btn-close { background: none; border: none; font-size: 20px; color: var(--gray-400); padding: 2px 5px; }
+    .share-toolbar .btn-close:hover { color: var(--gray-800); background: none; }
+    .share-body { overflow-y: auto; padding: 20px 22px; }
+    .share-head {
+      display: flex; align-items: center; gap: 12px;
+      padding-bottom: 14px; margin-bottom: 14px; border-bottom: 2px solid var(--green-pale);
+    }
+    .share-head img { height: 34px; width: auto; }
+    .share-head-text .sh-name { font-size: 14px; font-weight: 700; color: var(--green-dark); }
+    .share-head-text .sh-sub  { font-size: 11px; color: var(--gray-400); margin-top: 1px; }
+    .share-cols {
+      display: grid;
+      /* 6 columns: #·Date·Customer | #·Date·Customer */
+      grid-template-columns: 28px 1fr 1fr 28px 1fr 1fr;
+      border: 1px solid var(--gray-200); border-radius: 8px; overflow: hidden;
+    }
+    .share-col-head {
+      background: var(--green-pale); color: var(--green-dark);
+      padding: 6px 8px; font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .4px;
+    }
+    /* divider between the two halves */
+    .share-col-head.divider-left  { border-right: 2px solid var(--green-light); }
+    .share-cols .sc {
+      padding: 7px 8px; font-size: 12px; border-top: 1px solid var(--gray-100);
+    }
+    .share-cols .sc.num   { color: var(--gray-400); font-size: 11px; text-align: right; }
+    .share-cols .sc.date  { color: var(--gray-600); white-space: nowrap; }
+    .share-cols .sc.divl  { border-right: 2px solid var(--gray-200); }
+    .share-cols .sc.even  { background: var(--gray-50); }
+    .share-footer { margin-top: 14px; font-size: 11px; color: var(--gray-400); text-align: center; }
+    #share-view-btn {
+      background: var(--white); border: 1px solid var(--gray-200); border-radius: 7px;
+      padding: 5px 13px; font-size: 12px; font-weight: 600; font-family: inherit;
+      cursor: pointer; transition: all .15s; color: var(--gray-800);
+    }
+    #share-view-btn:hover { background: var(--green-pale); border-color: var(--green-mid); }
+    @media print {
+      body > *:not(#share-modal) { display: none !important; }
+      #share-modal { position: static !important; background: none !important; display: block !important; }
+      .share-box { box-shadow: none !important; width: 100% !important; max-height: none !important; }
+      .share-toolbar { display: none !important; }
+    }
+
+    /* ── Loading / Error ── */
+    #loading-overlay {
+      position: fixed; inset: 0; background: rgba(240,250,244,.93);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 999; gap: 14px;
+    }
+    .spinner {
+      width: 38px; height: 38px; border: 4px solid var(--green-pale);
+      border-top-color: var(--green-mid); border-radius: 50%; animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading-overlay p { font-size: 14px; color: var(--gray-600); }
+    #error-banner {
+      display: none; background: #fff5f5; border: 1px solid #fca5a5;
+      color: var(--danger); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 18px; font-size: 14px;
+    }
+
+    @media (max-width: 900px) {
+      main { padding: 16px 14px 40px; }
+      header, .filters-bar, .tab-nav { padding-left: 14px; padding-right: 14px; }
+      .charts-grid { grid-template-columns: 1fr; }
+      .chart-card.full { grid-column: 1; }
+    }
+    @media (max-width: 600px) {
+      .kpi-grid { grid-template-columns: repeat(2,1fr); }
+    }
+  </style>
+</head>
+<body>
+
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <p>Loading dashboard data…</p>
+</div>
+
+<header>
+  <div class="header-left">
+    <img class="logo"
+      src="https://capybaracare.in/wp-content/uploads/2025/07/Green-and-White-Elegant-India-Fashion-Brand-Logo-120-x-78-px-1-e1753250830504.png"
+      alt="Capybara Care" />
+    <div class="header-title">
+      <span class="brand">Capybara Care</span>
+      <span class="sub">Revenue Dashboard</span>
+    </div>
+  </div>
+  <div class="header-right">
+    <span id="last-updated"></span>
+    <button id="refresh-btn">↻ Refresh</button>
+  </div>
+</header>
+
+<!-- Global filters -->
+<div class="filters-bar">
+  <div class="filter-group">
+    <label>Year</label>
+    <select id="filter-year"><option value="">All Years</option></select>
+  </div>
+  <div class="filter-group">
+    <label>Month</label>
+    <select id="filter-month"><option value="">All Months</option></select>
+  </div>
+  <div class="filter-group">
+    <label>Therapist</label>
+    <select id="filter-therapist"><option value="">All Therapists</option></select>
+  </div>
+  <div class="filter-group">
+    <label>Customer</label>
+    <select id="filter-customer"><option value="">All Customers</option></select>
+  </div>
+</div>
+
+<!-- Tab navigation -->
+<div class="tab-nav">
+  <button class="tab-btn active" data-tab="home">Home</button>
+  <button class="tab-btn" data-tab="therapist">Therapist</button>
+  <button class="tab-btn" data-tab="customers">Customers</button>
+</div>
+
+<main>
+  <div id="error-banner"></div>
+
+  <!-- ═══════════════════ HOME TAB ═══════════════════ -->
+  <div class="tab-panel active" id="tab-home">
+
+    <div class="kpi-grid">
+      <div class="kpi-card c1">
+        <span class="kpi-label">Total Revenue</span>
+        <span class="kpi-value" id="kpi-total-revenue">—</span>
+        <span class="kpi-sub">Sum of You Gave</span>
+      </div>
+      <div class="kpi-card c2">
+        <span class="kpi-label">Net Revenue</span>
+        <span class="kpi-value" id="kpi-net-revenue">—</span>
+        <span class="kpi-sub">After therapist share</span>
+      </div>
+      <div class="kpi-card c3">
+        <span class="kpi-label">Total Sessions</span>
+        <span class="kpi-value" id="kpi-sessions">—</span>
+        <span class="kpi-sub">Where You Gave &gt; 0</span>
+      </div>
+      <div class="kpi-card c4">
+        <span class="kpi-label">Therapist Payout</span>
+        <span class="kpi-value" id="kpi-therapist-payout">—</span>
+        <span class="kpi-sub">Sum of Share</span>
+      </div>
+      <div class="kpi-card c5">
+        <span class="kpi-label">Avg per Session</span>
+        <span class="kpi-value" id="kpi-avg">—</span>
+        <span class="kpi-sub">Revenue / sessions</span>
+      </div>
+      <div class="kpi-card c6">
+        <span class="kpi-label">Outstanding</span>
+        <span class="kpi-value" id="kpi-outstanding">—</span>
+        <span class="kpi-sub">Revenue − Payments received</span>
+      </div>
+    </div>
+
+    <div class="charts-grid">
+      <div class="chart-card full">
+        <div class="chart-title"><span class="dot"></span>Monthly Revenue &amp; Net Revenue</div>
+        <div class="chart-wrap tall"><canvas id="chart-monthly"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title"><span class="dot"></span>Sessions per Month</div>
+        <div class="chart-wrap"><canvas id="chart-sessions"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title"><span class="dot"></span>Avg Revenue per Session (Monthly)</div>
+        <div class="chart-wrap"><canvas id="chart-avg-session"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Transactions table -->
+    <div class="table-card">
+      <div class="table-header">
+        <h3>All Transactions</h3>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button id="share-view-btn">📋 Share View</button>
+          <input type="text" class="table-search" id="table-search" placeholder="Search…" />
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th data-col="Date">Date</th>
+              <th data-col="Customer Name">Customer</th>
+              <th data-col="Details">Details</th>
+              <th data-col="Therapist">Therapist</th>
+              <th data-col="You Gave">You Gave (₹)</th>
+              <th data-col="You Got">Payment Received (₹)</th>
+              <th data-col="Share">Therapist Share (₹)</th>
+              <th data-col="Month">Month</th>
+            </tr>
+          </thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+      <div class="pagination">
+        <div class="page-size-group">
+          <label>Rows</label>
+          <select id="page-size">
+            <option value="20">20</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+        </div>
+        <span id="page-info"></span>
+        <div class="pagination-right">
+          <button id="btn-prev">← Prev</button>
+          <button id="btn-next">Next →</button>
+        </div>
+      </div>
+    </div>
+  </div><!-- /home -->
+
+  <!-- ═══════════════════ THERAPIST TAB ═══════════════════ -->
+  <div class="tab-panel" id="tab-therapist">
+
+    <div class="kpi-grid" id="therapist-kpi-grid">
+      <!-- filled dynamically -->
+    </div>
+
+    <div class="charts-grid">
+      <div class="chart-card full">
+        <div class="chart-title"><span class="dot"></span>Revenue by Therapist (Net Profit + Therapist Share)</div>
+        <div class="chart-wrap tall"><canvas id="chart-therapist-stacked"></canvas></div>
+      </div>
+      <div class="chart-card full">
+        <div class="chart-title"><span class="dot"></span>Monthly Sessions by Therapist</div>
+        <div class="chart-wrap tall"><canvas id="chart-therapist-sessions"></canvas></div>
+      </div>
+    </div>
+
+  </div><!-- /therapist -->
+
+  <!-- ═══════════════════ CUSTOMERS TAB ═══════════════════ -->
+  <div class="tab-panel" id="tab-customers">
+
+    <div class="charts-grid">
+      <div class="chart-card full">
+        <div class="chart-title"><span class="dot"></span>Top Customers — Revenue &amp; Sessions</div>
+        <div class="chart-wrap tall"><canvas id="chart-customer-revenue"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Customer balance table -->
+    <div class="table-card">
+      <div class="table-header">
+        <h3>Customer Balances</h3>
+        <input type="text" class="table-search" id="cust-search" placeholder="Search customer…" />
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th data-tab="cust" data-col="name">Customer</th>
+              <th data-tab="cust" data-col="sessions">Sessions</th>
+              <th data-tab="cust" data-col="revenue">Revenue (₹)</th>
+              <th data-tab="cust" data-col="received">Payments Received (₹)</th>
+              <th data-tab="cust" data-col="balance">Balance (₹)</th>
+              <th data-tab="cust" data-col="status">Status</th>
+            </tr>
+          </thead>
+          <tbody id="cust-table-body"></tbody>
+        </table>
+      </div>
+      <div class="pagination">
+        <div class="page-size-group">
+          <label>Rows</label>
+          <select id="cust-page-size">
+            <option value="20">20</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+        </div>
+        <span id="cust-page-info"></span>
+        <div class="pagination-right">
+          <button id="cust-btn-prev">← Prev</button>
+          <button id="cust-btn-next">Next →</button>
+        </div>
+      </div>
+    </div>
+  </div><!-- /customers -->
+
+</main>
+
+<!-- Share View Modal -->
+<div id="share-modal">
+  <div class="share-box">
+    <div class="share-toolbar">
+      <h3 id="share-modal-title">Session List</h3>
+      <div class="share-toolbar-right">
+        <button class="btn-print" onclick="window.print()">🖨 Print / PDF</button>
+        <button class="btn-close" id="share-close">×</button>
+      </div>
+    </div>
+    <div class="share-body" id="share-body"></div>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// CONFIG
+// ─────────────────────────────────────────────────────────────────────────────
+const SHEET_ID       = '1JeaSJvMTJ1aUGwMrQ62-6V2v8ZWfypb24QbJYbUb5Rs';
+const WORKSHEET_NAME = 'DataCopy';
+const JSONP_CB       = '__gvizCb';
+const SHEET_URL      = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=responseHandler:${JSONP_CB}&sheet=${encodeURIComponent(WORKSHEET_NAME)}`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────────────────────
+let allRows      = [];
+let filteredRows = [];   // session rows only (You Gave > 0)
+let allRowsRaw   = [];   // all rows including payment-only rows (for You Got totals)
+
+let sortCol = 'Date', sortDir = 'desc';
+let custSortCol = 'revenue', custSortDir = 'desc';
+let page = 1, custPage = 1;
+let PAGE = 20;
+
+const charts = {};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PALETTE
+// ─────────────────────────────────────────────────────────────────────────────
+const PALETTE = ['#1b4332','#2d6a4f','#40916c','#52b788','#74c69d','#95d5b2','#b7e4c7','#081c15','#a8dadc','#457b9d'];
+function palette(i) { return PALETTE[i % PALETTE.length]; }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+function parseNum(v) {
+  if (v === null || v === undefined || v === '') return 0;
+  const n = parseFloat(String(v).replace(/[^\d.-]/g, ''));
+  return isFinite(n) ? n : 0;
+}
+const fmtShort = n => {
+  if (!Number.isFinite(n)) return '—';
+  if (n >= 1e5) return '₹' + (n / 1e5).toFixed(2) + 'L';
+  if (n >= 1e3) return '₹' + (n / 1e3).toFixed(2) + 'K';
+  return '₹' + n.toFixed(2);
+};
+const fmtExact = n => Number.isFinite(n) ? '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+const fmtFull = n => Number.isFinite(n) ? '₹' + Math.round(n).toLocaleString('en-IN') : '—';
+
+const MONTH_ORDER = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const mIdx = m => { const i = MONTH_ORDER.indexOf(m); return i === -1 ? 99 : i; };
+
+function periodKey(r) {
+  return `${r['Month'] || '?'} ${r['Year'] || '?'}`;
+}
+function periodSort(a, b) {
+  const [ma, ya] = a.split(' '); const [mb, yb] = b.split(' ');
+  if (ya !== yb) return Number(ya) - Number(yb);
+  return mIdx(ma) - mIdx(mb);
+}
+
+function destroyChart(key) {
+  if (charts[key]) { charts[key].destroy(); delete charts[key]; }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FETCH (JSONP)
+// ─────────────────────────────────────────────────────────────────────────────
+function parseGvizTable(json) {
+  const table = json.table || json;
+  const cols  = table.cols.map(c => ({ label: c.label || c.id || '', type: c.type || '' }));
+  return (table.rows || []).map(r => {
+    const obj = {};
+    (r.c || []).forEach((cell, i) => {
+      if (!cell || cell.v === null || cell.v === undefined) { obj[cols[i].label] = ''; return; }
+      // gviz returns dates as "Date(year,month0indexed,day)" strings or JS Date-like values
+      if (cols[i].type === 'date' || cols[i].type === 'datetime') {
+        const v = cell.v;
+        // Format: "Date(2026,1,2)" — month is 0-indexed
+        const m = typeof v === 'string' && v.match(/^Date\((\d+),(\d+),(\d+)/);
+        if (m) {
+          const yr = parseInt(m[1]), mo = parseInt(m[2]), dy = parseInt(m[3]);
+          const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+          obj[cols[i].label] = `${String(dy).padStart(2,'0')} ${months[mo]} ${yr}`;
+        } else {
+          obj[cols[i].label] = cell.f || String(v);
+        }
+      } else {
+        obj[cols[i].label] = cell.v;
+      }
+    });
+    return obj;
+  });
+}
+
+function fetchSheetData() {
+  return new Promise((resolve, reject) => {
+    const old = document.getElementById('__gviz_script');
+    if (old) old.remove();
+
+    const timeout = setTimeout(() => {
+      delete window[JSONP_CB];
+      reject(new Error('Request timed out. Check that the sheet is publicly shared (Anyone with the link → Viewer).'));
+    }, 15000);
+
+    window[JSONP_CB] = function(json) {
+      clearTimeout(timeout);
+      delete window[JSONP_CB];
+      try { resolve(parseGvizTable(json)); } catch(e) { reject(e); }
+    };
+
+    const script = document.createElement('script');
+    script.id  = '__gviz_script';
+    script.src = SHEET_URL;
+    script.onerror = () => {
+      clearTimeout(timeout);
+      delete window[JSONP_CB];
+      reject(new Error('Failed to load sheet. Check that it is publicly shared.'));
+    };
+    document.head.appendChild(script);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FILTERS
+// ─────────────────────────────────────────────────────────────────────────────
+function populateFilters(rows) {
+  // Use allRowsRaw for populating dropdowns so all customers/therapists appear
+  const src = allRowsRaw;
+  const years     = [...new Set(src.map(r => r['Year']).filter(Boolean))].sort((a,b) => b - a);
+  const months    = [...new Set(src.map(r => r['Month']).filter(Boolean))].sort((a,b) => mIdx(a) - mIdx(b));
+  const therapists = [...new Set(src.map(r => r['Therapist']).filter(Boolean))].sort();
+  const customers  = [...new Set(src.map(r => r['Customer Name']).filter(Boolean))].sort();
+  fillSelect('filter-year',      years,      'All Years');
+  fillSelect('filter-month',     months,     'All Months');
+  fillSelect('filter-therapist', therapists, 'All Therapists');
+  fillSelect('filter-customer',  customers,  'All Customers');
+}
+
+function fillSelect(id, values, placeholder) {
+  const sel = document.getElementById(id);
+  const cur = sel.value;
+  sel.innerHTML = `<option value="">${placeholder}</option>`;
+  values.forEach(v => {
+    const o = document.createElement('option');
+    o.value = v; o.textContent = v;
+    if (String(v) === String(cur)) o.selected = true;
+    sel.appendChild(o);
+  });
+}
+
+function getFilterValues() {
+  return {
+    year:      document.getElementById('filter-year').value,
+    month:     document.getElementById('filter-month').value,
+    therapist: document.getElementById('filter-therapist').value,
+    customer:  document.getElementById('filter-customer').value,
+  };
+}
+
+function applyFilters() {
+  const f = getFilterValues();
+  // filteredRows = session rows (You Gave > 0) matching the filter
+  filteredRows = allRows.filter(r => {
+    if (f.year      && String(r['Year'])      !== String(f.year))  return false;
+    if (f.month     && r['Month']             !== f.month)         return false;
+    if (f.therapist && r['Therapist']         !== f.therapist)     return false;
+    if (f.customer  && r['Customer Name']     !== f.customer)      return false;
+    return true;
+  });
+  page = 1; custPage = 1;
+  render();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KPIs
+// ─────────────────────────────────────────────────────────────────────────────
+function computeKPIs(rows) {
+  let totalRev = 0, totalShare = 0;
+  rows.forEach(r => {
+    totalRev   += parseNum(r['You Gave']);
+    totalShare += parseNum(r['Share']);
+  });
+  const sessions = rows.length;
+  const net = totalRev - totalShare;
+  const avg = sessions > 0 ? Math.round(totalRev / sessions) : 0;
+
+  // Outstanding: total revenue from sessions - total payments received (You Got) across all matching rows
+  const f = getFilterValues();
+  let totalReceived = 0;
+  allRowsRaw.forEach(r => {
+    if (f.year      && String(r['Year'])  !== String(f.year))  return;
+    if (f.month     && r['Month']         !== f.month)         return;
+    if (f.therapist && r['Therapist']     !== f.therapist)     return;
+    if (f.customer  && r['Customer Name'] !== f.customer)      return;
+    totalReceived += parseNum(r['You Got']);
+  });
+  const outstanding = totalRev - totalReceived;
+
+  const _setKpi = (id, short, exact) => {
+    const el = document.getElementById(id);
+    el.textContent = short;
+    el.title = exact;
+  };
+  _setKpi('kpi-total-revenue',    fmtShort(totalRev),    fmtExact(totalRev));
+  _setKpi('kpi-net-revenue',      fmtShort(net),         fmtExact(net));
+  _setKpi('kpi-therapist-payout', fmtShort(totalShare),  fmtExact(totalShare));
+  _setKpi('kpi-avg',              fmtShort(avg),         fmtExact(avg));
+  _setKpi('kpi-outstanding',      fmtShort(outstanding), fmtExact(outstanding));
+  document.getElementById('kpi-sessions').textContent = sessions;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HOME CHARTS
+// ─────────────────────────────────────────────────────────────────────────────
+function buildMonthlyChart(rows) {
+  destroyChart('monthly');
+  const map = {};
+  rows.forEach(r => {
+    const k = periodKey(r);
+    if (!map[k]) map[k] = { rev: 0, share: 0 };
+    map[k].rev   += parseNum(r['You Gave']);
+    map[k].share += parseNum(r['Share']);
+  });
+  const labels = Object.keys(map).sort(periodSort);
+  const revenue = labels.map(k => map[k].rev);
+  const net     = labels.map(k => map[k].rev - map[k].share);
+
+  const ctx = document.getElementById('chart-monthly').getContext('2d');
+  charts['monthly'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Total Revenue',  data: revenue, backgroundColor: 'rgba(64,145,108,.75)', borderRadius: 5, order: 2 },
+        { label: 'Net Revenue', data: net, type: 'line', borderColor: '#1b4332',
+          backgroundColor: 'rgba(27,67,50,.1)', pointBackgroundColor: '#1b4332',
+          tension: .35, fill: true, borderWidth: 2, pointRadius: 4, order: 1 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'top', labels: { font: { family:'Inter', size:12 } } } },
+      scales: {
+        x: { grid: { display:false }, ticks: { font: { family:'Inter', size:11 } } },
+        y: { grid: { color:'#f3f4f6' }, ticks: { font: { family:'Inter', size:11 },
+          callback: v => v >= 1000 ? '₹'+(v/1000).toFixed(0)+'K' : '₹'+v } },
+      },
+    },
+  });
+}
+
+function buildSessionsChart(rows) {
+  destroyChart('sessions');
+  const map = {};
+  rows.forEach(r => { const k = periodKey(r); map[k] = (map[k] || 0) + 1; });
+  const labels = Object.keys(map).sort(periodSort);
+  const ctx = document.getElementById('chart-sessions').getContext('2d');
+  charts['sessions'] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{ label: 'Sessions', data: labels.map(k => map[k]),
+        borderColor: '#40916c', backgroundColor: 'rgba(64,145,108,.1)',
+        tension: .35, fill: true, pointBackgroundColor: '#40916c', borderWidth: 2, pointRadius: 4 }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display:false } },
+      scales: {
+        x: { grid: { display:false }, ticks: { font: { family:'Inter', size:11 } } },
+        y: { grid: { color:'#f3f4f6' }, ticks: { font: { family:'Inter', size:11 }, stepSize:1 } },
+      },
+    },
+  });
+}
+
+function buildAvgSessionChart(rows) {
+  destroyChart('avg-session');
+  const map = {};
+  rows.forEach(r => {
+    const k = periodKey(r);
+    if (!map[k]) map[k] = { rev: 0, count: 0 };
+    map[k].rev += parseNum(r['You Gave']);
+    map[k].count++;
+  });
+  const labels = Object.keys(map).sort(periodSort);
+  const ctx = document.getElementById('chart-avg-session').getContext('2d');
+  charts['avg-session'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ label: 'Avg ₹/Session', data: labels.map(k => Math.round(map[k].rev / map[k].count)),
+        backgroundColor: 'rgba(116,198,157,.8)', borderRadius: 5 }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display:false } },
+      scales: {
+        x: { grid: { display:false }, ticks: { font: { family:'Inter', size:11 } } },
+        y: { grid: { color:'#f3f4f6' }, ticks: { font: { family:'Inter', size:11 },
+          callback: v => v >= 1000 ? '₹'+(v/1000).toFixed(0)+'K' : '₹'+v } },
+      },
+    },
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THERAPIST TAB
+// ─────────────────────────────────────────────────────────────────────────────
+function buildTherapistKPIs(rows) {
+  const grid = document.getElementById('therapist-kpi-grid');
+  const map = {};
+  rows.forEach(r => {
+    const t = r['Therapist'] || 'Unknown';
+    if (!map[t]) map[t] = { rev: 0, share: 0, sessions: 0 };
+    map[t].rev      += parseNum(r['You Gave']);
+    map[t].share    += parseNum(r['Share']);
+    map[t].sessions++;
+  });
+  const therapists = Object.keys(map).sort((a,b) => map[b].rev - map[a].rev);
+  grid.innerHTML = '';
+  therapists.forEach((t, i) => {
+    const d = map[t];
+    const card = document.createElement('div');
+    card.className = `kpi-card c${(i % 6) + 1}`;
+    card.innerHTML = `
+      <span class="kpi-label">${t}</span>
+      <span class="kpi-value">${fmtShort(d.rev)}</span>
+      <span class="kpi-sub">${d.sessions} sessions · share ${fmtShort(d.share)} · net ${fmtShort(d.rev - d.share)}</span>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+function buildTherapistStackedChart(rows) {
+  destroyChart('therapist-stacked');
+
+  // Collect all periods and therapists
+  const periods    = [...new Set(rows.map(periodKey))].sort(periodSort);
+  const therapists = [...new Set(rows.map(r => r['Therapist'] || 'Unknown'))].sort();
+
+  // Build per-therapist, per-period data
+  const byTherapistPeriod = {};
+  rows.forEach(r => {
+    const t = r['Therapist'] || 'Unknown';
+    const p = periodKey(r);
+    if (!byTherapistPeriod[t]) byTherapistPeriod[t] = {};
+    if (!byTherapistPeriod[t][p]) byTherapistPeriod[t][p] = { share: 0, net: 0 };
+    byTherapistPeriod[t][p].share += parseNum(r['Share']);
+    byTherapistPeriod[t][p].net   += parseNum(r['You Gave']) - parseNum(r['Share']);
+  });
+
+  const datasets = [];
+  therapists.forEach((t, ti) => {
+    const baseColor = palette(ti);
+    const shareColor = baseColor + 'aa'; // semi-transparent for share
+
+    datasets.push({
+      label: `${t} — Net Profit`,
+      data: periods.map(p => byTherapistPeriod[t]?.[p]?.net || 0),
+      backgroundColor: baseColor,
+      stack: t,
+      borderRadius: 4,
+    });
+    datasets.push({
+      label: `${t} — Therapist Share`,
+      data: periods.map(p => byTherapistPeriod[t]?.[p]?.share || 0),
+      backgroundColor: shareColor,
+      stack: t,
+      borderRadius: 0,
+    });
+  });
+
+  const ctx = document.getElementById('chart-therapist-stacked').getContext('2d');
+  charts['therapist-stacked'] = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: periods, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: { font: { family:'Inter', size:11 }, boxWidth: 12, padding: 10 },
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: ₹${Math.round(ctx.raw).toLocaleString('en-IN')}`,
+          },
+        },
+      },
+      scales: {
+        x: { stacked: true, grid: { display:false }, ticks: { font: { family:'Inter', size:11 } } },
+        y: { stacked: true, grid: { color:'#f3f4f6' }, ticks: { font: { family:'Inter', size:11 },
+          callback: v => v >= 1000 ? '₹'+(v/1000).toFixed(0)+'K' : '₹'+v } },
+      },
+    },
+  });
+}
+
+function buildTherapistSessionsChart(rows) {
+  destroyChart('therapist-sessions');
+  const periods    = [...new Set(rows.map(periodKey))].sort(periodSort);
+  const therapists = [...new Set(rows.map(r => r['Therapist'] || 'Unknown'))].sort();
+
+  const sessMap = {};
+  rows.forEach(r => {
+    const t = r['Therapist'] || 'Unknown';
+    const p = periodKey(r);
+    if (!sessMap[t]) sessMap[t] = {};
+    sessMap[t][p] = (sessMap[t][p] || 0) + 1;
+  });
+
+  const datasets = therapists.map((t, i) => ({
+    label: t,
+    data: periods.map(p => sessMap[t]?.[p] || 0),
+    borderColor: palette(i),
+    backgroundColor: palette(i) + '22',
+    tension: .3,
+    fill: false,
+    pointBackgroundColor: palette(i),
+    borderWidth: 2,
+    pointRadius: 4,
+  }));
+
+  const ctx = document.getElementById('chart-therapist-sessions').getContext('2d');
+  charts['therapist-sessions'] = new Chart(ctx, {
+    type: 'line',
+    data: { labels: periods, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position:'top', labels: { font: { family:'Inter', size:11 }, boxWidth:12, padding:10 } } },
+      scales: {
+        x: { grid: { display:false }, ticks: { font: { family:'Inter', size:11 } } },
+        y: { grid: { color:'#f3f4f6' }, ticks: { font: { family:'Inter', size:11 }, stepSize:1 } },
+      },
+    },
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CUSTOMERS TAB
+// ─────────────────────────────────────────────────────────────────────────────
+function buildCustomerData(rows) {
+  // Revenue & sessions from session rows (You Gave > 0)
+  const map = {};
+  rows.forEach(r => {
+    const c = r['Customer Name'] || 'Unknown';
+    if (!map[c]) map[c] = { revenue: 0, sessions: 0, received: 0 };
+    map[c].revenue  += parseNum(r['You Gave']);
+    map[c].sessions++;
+  });
+
+  // Payments received (You Got) from ALL raw rows matching current filter
+  const f = getFilterValues();
+  allRowsRaw.forEach(r => {
+    if (f.year      && String(r['Year'])  !== String(f.year))  return;
+    if (f.month     && r['Month']         !== f.month)         return;
+    if (f.therapist && r['Therapist']     !== f.therapist)     return;
+    if (f.customer  && r['Customer Name'] !== f.customer)      return;
+    const got = parseNum(r['You Got']);
+    if (!got) return;
+    const c = r['Customer Name'] || 'Unknown';
+    if (!map[c]) map[c] = { revenue: 0, sessions: 0, received: 0 };
+    map[c].received += got;
+  });
+
+  return Object.entries(map).map(([name, d]) => ({
+    name,
+    ...d,
+    balance: d.revenue - d.received,  // positive = owes us, negative = they have advance
+  }));
+}
+
+function buildCustomerChart(rows) {
+  destroyChart('customer-revenue');
+  const data   = buildCustomerData(rows);
+  const sorted = [...data].sort((a,b) => b.revenue - a.revenue).slice(0, 15);
+
+  const ctx = document.getElementById('chart-customer-revenue').getContext('2d');
+  charts['customer-revenue'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: sorted.map(d => d.name),
+      datasets: [
+        {
+          label: 'Revenue (₹)',
+          data: sorted.map(d => d.revenue),
+          backgroundColor: 'rgba(64,145,108,.8)',
+          borderRadius: 5,
+          yAxisID: 'y',
+        },
+        {
+          label: 'Sessions',
+          data: sorted.map(d => d.sessions),
+          type: 'line',
+          borderColor: '#1b4332',
+          backgroundColor: 'rgba(27,67,50,.08)',
+          pointBackgroundColor: '#1b4332',
+          tension: .3,
+          borderWidth: 2,
+          pointRadius: 5,
+          yAxisID: 'y1',
+        },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position:'top', labels: { font: { family:'Inter', size:12 } } } },
+      scales: {
+        x: { grid: { display:false }, ticks: { font: { family:'Inter', size:11 } } },
+        y: { grid: { color:'#f3f4f6' }, position:'left',
+          ticks: { font: { family:'Inter', size:11 }, callback: v => v>=1000?'₹'+(v/1000).toFixed(0)+'K':'₹'+v } },
+        y1: { position:'right', grid: { drawOnChartArea:false },
+          ticks: { font: { family:'Inter', size:11 }, stepSize:1 } },
+      },
+    },
+  });
+}
+
+function getCustTableRows() {
+  const q = document.getElementById('cust-search').value.trim().toLowerCase();
+  const data = buildCustomerData(filteredRows);
+  let rows = q ? data.filter(d => d.name.toLowerCase().includes(q)) : data;
+  rows = [...rows].sort((a,b) => {
+    const va = a[custSortCol] ?? 0;
+    const vb = b[custSortCol] ?? 0;
+    if (custSortCol === 'name') return custSortDir === 'asc'
+      ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+    return custSortDir === 'asc' ? va - vb : vb - va;
+  });
+  return rows;
+}
+
+function renderCustTable() {
+  const rows  = getCustTableRows();
+  const total = rows.length;
+  const pages = Math.max(1, Math.ceil(total / PAGE));
+  custPage    = Math.min(custPage, pages);
+  const slice = rows.slice((custPage-1)*PAGE, custPage*PAGE);
+
+  const tbody = document.getElementById('cust-table-body');
+  tbody.innerHTML = '';
+  slice.forEach(d => {
+    const balClass = d.balance < 0 ? 'balance-negative' : d.balance === 0 ? '' : 'balance-positive';
+    let statusBadge;
+    if (d.balance < 0) {
+      statusBadge = `<span class="badge badge-green">Advance ₹${Math.abs(d.balance).toLocaleString('en-IN')}</span>`;
+    } else if (d.balance === 0) {
+      statusBadge = `<span class="badge badge-green">Settled</span>`;
+    } else {
+      statusBadge = `<span class="badge badge-red">Due ₹${d.balance.toLocaleString('en-IN')}</span>`;
+    }
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${d.name}</td>
+      <td>${d.sessions}</td>
+      <td>${fmtFull(d.revenue)}</td>
+      <td>${d.received ? fmtFull(d.received) : '—'}</td>
+      <td class="${balClass}">${d.balance !== 0 ? fmtFull(Math.abs(d.balance)) : '₹0'}</td>
+      <td>${statusBadge}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('cust-page-info').textContent = `Page ${custPage} of ${pages} (${total})`;
+  document.getElementById('cust-btn-prev').disabled = custPage <= 1;
+  document.getElementById('cust-btn-next').disabled = custPage >= pages;
+
+  document.querySelectorAll('thead th[data-tab="cust"]').forEach(th => {
+    th.classList.remove('sort-asc','sort-desc');
+    if (th.dataset.col === custSortCol) th.classList.add(custSortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN TRANSACTIONS TABLE
+// ─────────────────────────────────────────────────────────────────────────────
+function getTableRows() {
+  const q = document.getElementById('table-search').value.trim().toLowerCase();
+  let rows = q
+    ? filteredRows.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(q)))
+    : filteredRows;
+  return [...rows].sort((a,b) => {
+    let va = a[sortCol] ?? '', vb = b[sortCol] ?? '';
+    if (['You Gave','You Got','Share'].includes(sortCol)) { va = parseNum(va); vb = parseNum(vb); }
+    else if (['Month#','Year'].includes(sortCol))          { va = Number(va); vb = Number(vb); }
+    else { va = String(va).toLowerCase(); vb = String(vb).toLowerCase(); }
+    if (va < vb) return sortDir === 'asc' ? -1 : 1;
+    if (va > vb) return sortDir === 'asc' ? 1  : -1;
+    return 0;
+  });
+}
+
+function renderTable() {
+  const rows  = getTableRows();
+  const total = rows.length;
+  const pages = Math.max(1, Math.ceil(total / PAGE));
+  page        = Math.min(page, pages);
+  const slice = rows.slice((page-1)*PAGE, page*PAGE);
+
+  const tbody = document.getElementById('table-body');
+  tbody.innerHTML = '';
+  slice.forEach(r => {
+    const youGot = parseNum(r['You Got']);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${r['Date'] || ''}</td>
+      <td>${r['Customer Name'] || ''}</td>
+      <td>${r['Details'] || ''}</td>
+      <td><span class="badge badge-green">${r['Therapist'] || ''}</span></td>
+      <td>${parseNum(r['You Gave']) ? fmtFull(parseNum(r['You Gave'])) : '—'}</td>
+      <td>${youGot ? fmtFull(youGot) : '—'}</td>
+      <td>${parseNum(r['Share']) ? fmtFull(parseNum(r['Share'])) : '—'}</td>
+      <td>${r['Month'] || ''} ${r['Year'] || ''}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('page-info').textContent = `Page ${page} of ${pages} (${total} rows)`;
+  document.getElementById('btn-prev').disabled = page <= 1;
+  document.getElementById('btn-next').disabled = page >= pages;
+
+  document.querySelectorAll('thead th[data-col]').forEach(th => {
+    th.classList.remove('sort-asc','sort-desc');
+    if (th.dataset.col === sortCol) th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MASTER RENDER
+// ─────────────────────────────────────────────────────────────────────────────
+function render() {
+  computeKPIs(filteredRows);
+  // Home
+  buildMonthlyChart(filteredRows);
+  buildSessionsChart(filteredRows);
+  buildAvgSessionChart(filteredRows);
+  renderTable();
+  // Therapist
+  buildTherapistKPIs(filteredRows);
+  buildTherapistStackedChart(filteredRows);
+  buildTherapistSessionsChart(filteredRows);
+  // Customers
+  buildCustomerChart(filteredRows);
+  renderCustTable();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────────────────────────────
+async function init() {
+  const eb = document.getElementById('error-banner');
+  eb.style.display = 'none';
+  try {
+    const raw = await fetchSheetData();
+    allRowsRaw   = raw.filter(r => r['Date'] || r['Customer Name']);
+    // Session rows: You Gave > 0
+    allRows      = allRowsRaw.filter(r => parseNum(r['You Gave']) > 0);
+    filteredRows = [...allRows];
+    populateFilters(allRows);
+    // Default to current month + year
+    const _now = new Date();
+    const _curMonth = MONTH_ORDER[_now.getMonth()];
+    const _curYear  = _now.getFullYear();
+    const _mSel = document.getElementById('filter-month');
+    const _ySel = document.getElementById('filter-year');
+    if ([..._mSel.options].some(o => o.value === _curMonth)) _mSel.value = _curMonth;
+    if ([..._ySel.options].some(o => String(o.value) === String(_curYear))) _ySel.value = _curYear;
+    applyFilters();
+    document.getElementById('last-updated').textContent =
+      'Updated: ' + new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
+  } catch(err) {
+    console.error(err);
+    eb.style.display = 'block';
+    eb.innerHTML = `<strong>Could not load data.</strong> Make sure the <em>DataCopy</em> sheet is publicly readable
+      (Share → Anyone with the link → Viewer).<br/><small style="opacity:.7">${err.message}</small>`;
+  } finally {
+    document.getElementById('loading-overlay').style.display = 'none';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EVENT LISTENERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SHARE VIEW
+// ─────────────────────────────────────────────────────────────────────────────
+function openShareView() {
+  const rows = getTableRows(); // respects current sort + search
+  const f    = getFilterValues();
+
+  // Build subtitle from active filters
+  const parts = [];
+  if (f.therapist) parts.push(f.therapist);
+  if (f.month && f.year) parts.push(`${f.month} ${f.year}`);
+  else if (f.month)      parts.push(f.month);
+  else if (f.year)       parts.push(f.year);
+  if (f.customer)        parts.push(f.customer);
+  const subtitle = parts.length ? parts.join(' · ') : 'All sessions';
+
+  document.getElementById('share-modal-title').textContent = `Session List — ${subtitle}`;
+
+  const body = document.getElementById('share-body');
+  body.innerHTML = `
+    <div class="share-head">
+      <img src="https://capybaracare.in/wp-content/uploads/2025/07/Green-and-White-Elegant-India-Fashion-Brand-Logo-120-x-78-px-1-e1753250830504.png" alt="Capybara Care" />
+      <div class="share-head-text">
+        <div class="sh-name">${subtitle} · ${rows.length} session${rows.length !== 1 ? 's' : ''} · Due: ₹${rows.reduce((s,r) => s + parseNum(r['Share']), 0).toLocaleString('en-IN')}</div>
+      </div>
+    </div>
+    <div class="share-cols">
+      <div class="share-col-head">#</div>
+      <div class="share-col-head">Date</div>
+      <div class="share-col-head divider-left">Customer</div>
+      <div class="share-col-head">#</div>
+      <div class="share-col-head">Date</div>
+      <div class="share-col-head">Customer</div>
+      ${(() => {
+        // Split into left half (1..half) and right half (half+1..end), read top-to-bottom
+        const half = Math.ceil(rows.length / 2);
+        const left  = rows.slice(0, half);
+        const right = rows.slice(half);
+        let html = '';
+        for (let i = 0; i < half; i++) {
+          const even = i % 2 === 1 ? ' even' : '';
+          const L = left[i];
+          const R = right[i];
+          html += `
+            <div class="sc num${even}">${i + 1}</div>
+            <div class="sc date${even}">${L['Date'] || ''}</div>
+            <div class="sc divl${even}">${L['Customer Name'] || ''}</div>`;
+          if (R) {
+            html += `
+            <div class="sc num${even}">${half + i + 1}</div>
+            <div class="sc date${even}">${R['Date'] || ''}</div>
+            <div class="sc${even}">${R['Customer Name'] || ''}</div>`;
+          } else {
+            html += `<div class="sc${even}"></div><div class="sc${even}"></div><div class="sc${even}"></div>`;
+          }
+        }
+        return html;
+      })()}
+    </div>
+  `;
+
+  document.getElementById('share-modal').classList.add('open');
+}
+
+// Tabs
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// Global filters
+['filter-year','filter-month','filter-therapist','filter-customer'].forEach(id =>
+  document.getElementById(id).addEventListener('change', applyFilters)
+);
+
+// Refresh
+document.getElementById('refresh-btn').addEventListener('click', () => {
+  document.getElementById('loading-overlay').style.display = 'flex';
+  init();
+});
+
+// Main table search & sort
+document.getElementById('table-search').addEventListener('input', () => { page = 1; renderTable(); });
+document.querySelectorAll('thead th[data-col]').forEach(th => {
+  th.addEventListener('click', () => {
+    if (sortCol === th.dataset.col) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    else { sortCol = th.dataset.col; sortDir = 'asc'; }
+    renderTable();
+  });
+});
+document.getElementById('btn-prev').addEventListener('click', () => { page--; renderTable(); });
+document.getElementById('btn-next').addEventListener('click', () => { page++; renderTable(); });
+document.getElementById('page-size').addEventListener('change', e => {
+  PAGE = parseInt(e.target.value); page = 1; renderTable();
+});
+
+// Customer table search & sort
+document.getElementById('cust-search').addEventListener('input', () => { custPage = 1; renderCustTable(); });
+document.querySelectorAll('thead th[data-tab="cust"]').forEach(th => {
+  th.addEventListener('click', () => {
+    if (custSortCol === th.dataset.col) custSortDir = custSortDir === 'asc' ? 'desc' : 'asc';
+    else { custSortCol = th.dataset.col; custSortDir = 'asc'; }
+    renderCustTable();
+  });
+});
+document.getElementById('cust-btn-prev').addEventListener('click', () => { custPage--; renderCustTable(); });
+document.getElementById('cust-btn-next').addEventListener('click', () => { custPage++; renderCustTable(); });
+document.getElementById('cust-page-size').addEventListener('change', e => {
+  PAGE = parseInt(e.target.value); custPage = 1; renderCustTable();
+});
+
+// Share modal open/close
+document.getElementById('share-view-btn').addEventListener('click', openShareView);
+document.getElementById('share-close').addEventListener('click', () => {
+  document.getElementById('share-modal').classList.remove('open');
+});
+document.getElementById('share-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('share-modal'))
+    document.getElementById('share-modal').classList.remove('open');
+});
+
+init();
+</script>
+</body>
+</html>
