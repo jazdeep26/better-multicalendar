@@ -931,6 +931,31 @@ body.dark .shared-row { border-bottom-color: #2a2a3a; background: rgba(255,255,2
   .client-view-btn .btn-label { display: none; }
 }
 
+/* ── CLONE MODAL ─────────────────────────────────────────────────────────── */
+.clone-event-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  background: #f5f5f5;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  word-break: break-word;
+}
+body.dark .clone-event-label { color: #ddd; background: #2a2a3a; }
+.clone-date-hint {
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 12px;
+}
+/* Disabled state for permission toggles when Clone is active */
+.toggle-switch input:disabled + .slider,
+.toggle-switch input:disabled + .toggle-track {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 /* ── AGENDA VIEW ──────────────────────────────────────────────────────────── */
 .agenda-wrapper {
   display: flex;
@@ -1129,6 +1154,23 @@ body.dark .agenda-event-location { color: #666; }
   </div>
 </div>
 
+<!-- CLONE MODAL -->
+<div class="modal-backdrop" id="clone-backdrop">
+  <div class="modal" style="max-width:380px">
+    <h2>Clone Event</h2>
+    <div class="clone-event-label" id="clone-evt-label"></div>
+    <p class="clone-date-hint" id="clone-evt-date-hint"></p>
+    <div>
+      <label>New Date</label>
+      <input type="date" id="clone-new-date">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-save" id="clone-save-btn">Clone &amp; Save</button>
+      <button class="btn-cancel" id="clone-cancel-btn">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- SETTINGS PANEL -->
 <div class="settings-backdrop" id="settings-backdrop">
   <div class="settings-panel" id="settings-panel">
@@ -1173,6 +1215,10 @@ body.dark .agenda-event-location { color: #666; }
         <span>Allow Delete</span>
         <label class="toggle-switch"><input type="checkbox" id="perm-delete"><span class="slider"></span></label>
       </div>
+      <div class="settings-row" style="margin-top:6px;border-top:1px solid #e0e0e0;padding-top:8px">
+        <span>Allow Clone</span>
+        <label class="toggle-switch"><input type="checkbox" id="perm-clone"><span class="slider"></span></label>
+      </div>
     </div>
 
     <div class="settings-section">
@@ -1204,7 +1250,7 @@ let enabledCalendars = new Set(); // set of calendar IDs enabled in settings (ga
 let cachedEvents = {};           // calId -> [event, ...]
 let viewDays     = 3;
 let anchorDate   = startOfToday();
-let permissions  = { add: false, edit: false, move: false, delete: false };
+let permissions  = { add: false, edit: false, move: false, delete: false, clone: false };
 let clientViewEnabled = false; // gated by settings toggle
 let clientViewMode    = false; // active client view toggle
 let activeClients     = new Set(); // client names visible in client view
@@ -1950,9 +1996,9 @@ function renderAgendaView() {
         row.appendChild(timeEl);
         row.appendChild(bodyEl);
 
-        if (permissions.edit) {
+        if (permissions.edit || permissions.clone) {
           row.style.cursor = 'pointer';
-          row.addEventListener('click', () => { hideTooltip(); openEditModal(ev); });
+          row.addEventListener('click', () => handleEventClick(ev));
         }
 
         row.addEventListener('mouseenter', e => showTooltip(e, ev, cal));
@@ -2138,8 +2184,8 @@ function renderGrid() {
         evEl.addEventListener('mouseenter', e => showTooltip(e, ev, cal));
         evEl.addEventListener('mousemove',  e => moveTooltip(e));
         evEl.addEventListener('mouseleave', hideTooltip);
-        if (permissions.edit) {
-          evEl.addEventListener('click', e => { e.stopPropagation(); hideTooltip(); openEditModal(ev); });
+        if (permissions.edit || permissions.clone) {
+          evEl.addEventListener('click', e => { e.stopPropagation(); handleEventClick(ev); });
           evEl.style.cursor = 'pointer';
         }
         attachEventInteraction(evEl, ev, cal, lane, d, pxPerMin);
@@ -2425,9 +2471,9 @@ function renderClientGrid() {
         evEl.addEventListener('mouseenter', e => showTooltip(e, ev, cal || { summary: '' }));
         evEl.addEventListener('mousemove',  e => moveTooltip(e));
         evEl.addEventListener('mouseleave', hideTooltip);
-        if (permissions.edit && cal) {
+        if ((permissions.edit || permissions.clone) && cal) {
           evEl.style.cursor = 'pointer';
-          evEl.addEventListener('click', e => { e.stopPropagation(); hideTooltip(); openEditModal(ev); });
+          evEl.addEventListener('click', e => { e.stopPropagation(); handleEventClick(ev); });
         }
         sharedLane.appendChild(evEl);
       });
@@ -2475,8 +2521,8 @@ function renderClientGrid() {
         evEl.addEventListener('mouseenter', e => showTooltip(e, ev, calEntry || { summary: '' }));
         evEl.addEventListener('mousemove',  e => moveTooltip(e));
         evEl.addEventListener('mouseleave', hideTooltip);
-        if (permissions.edit && calEntry) {
-          evEl.addEventListener('click', e => { e.stopPropagation(); hideTooltip(); openEditModal(ev); });
+        if ((permissions.edit || permissions.clone) && calEntry) {
+          evEl.addEventListener('click', e => { e.stopPropagation(); handleEventClick(ev); });
           evEl.style.cursor = 'pointer';
         }
         lane.appendChild(evEl);
@@ -2779,8 +2825,8 @@ function renderSingleClientGrid() {
       evEl.addEventListener('mouseenter', e => showTooltip(e, ev, calEntry || { summary: '' }));
       evEl.addEventListener('mousemove',  e => moveTooltip(e));
       evEl.addEventListener('mouseleave', hideTooltip);
-      if (permissions.edit && calEntry) {
-        evEl.addEventListener('click', e => { e.stopPropagation(); hideTooltip(); openEditModal(ev); });
+      if ((permissions.edit || permissions.clone) && calEntry) {
+        evEl.addEventListener('click', e => { e.stopPropagation(); handleEventClick(ev); });
         evEl.style.cursor = 'pointer';
       }
       lane.appendChild(evEl);
@@ -2906,6 +2952,126 @@ function updateDateLabel(days) {
 // ── MODAL ─────────────────────────────────────────────────────────────────────
 let modalMode = null; // 'edit' | 'create'
 let modalEventRef = null; // existing event object (edit mode)
+
+// ── CLONE MODAL ───────────────────────────────────────────────────────────────
+let cloneEventRef = null;
+
+function toDDMMYYYY(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`;
+}
+
+function updateDescLine(desc, prefix, value) {
+  // Replace a line starting with "PD:" or "ND:" in-place; leave rest unchanged
+  const regex = new RegExp(`^${prefix}:.*$`, 'm');
+  if (regex.test(desc)) return desc.replace(regex, `${prefix}: ${value}`);
+  return desc;
+}
+
+function handleEventClick(ev) {
+  hideTooltip();
+  if (permissions.clone) { openCloneModal(ev); }
+  else if (permissions.edit) { openEditModal(ev); }
+}
+
+function openCloneModal(ev) {
+  cloneEventRef = ev;
+  document.getElementById('clone-evt-label').textContent = ev.title;
+  document.getElementById('clone-evt-date-hint').textContent =
+    `Current date: ${toDDMMYYYY(ev.start)}`;
+  document.getElementById('clone-new-date').value = '';
+  document.getElementById('clone-backdrop').classList.add('open');
+}
+
+function closeCloneModal() {
+  document.getElementById('clone-backdrop').classList.remove('open');
+  cloneEventRef = null;
+}
+
+async function saveCloneModal() {
+  const ev = cloneEventRef;
+  if (!ev) return;
+
+  const dateVal = document.getElementById('clone-new-date').value;
+  if (!dateVal) { alert('Please select a new date.'); return; }
+
+  // Build new start/end on the selected date, preserving original time
+  const [yr, mo, dy] = dateVal.split('-').map(Number);
+  const newStart = new Date(yr, mo - 1, dy, ev.start.getHours(), ev.start.getMinutes(), 0);
+  const newEnd   = new Date(newStart.getTime() + (ev.end - ev.start));
+
+  const origDateStr = toDDMMYYYY(ev.start);   // original event's date → goes into clone's PD
+  const newDateStr  = toDDMMYYYY(newStart);    // new date → goes into original's ND
+
+  // Clone's description: PD = original event date, ND = blank
+  let cloneDesc = ev.desc || '';
+  cloneDesc = updateDescLine(cloneDesc, 'PD', origDateStr);
+  cloneDesc = updateDescLine(cloneDesc, 'ND', '');
+
+  // Original's description: ND = new date
+  let origDesc = ev.desc || '';
+  origDesc = updateDescLine(origDesc, 'ND', newDateStr);
+
+  function toOffsetISO(d) {
+    const off = -d.getTimezoneOffset();
+    const sign = off >= 0 ? '+' : '-';
+    const pad = n => String(Math.abs(n)).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00${sign}${pad(Math.floor(Math.abs(off)/60))}:${pad(Math.abs(off)%60)}`;
+  }
+
+  const tentPrefix = desc => ev.isTentative ? (desc ? `Tentative\n${desc}` : 'Tentative') : (desc || '');
+
+  const saveBtn = document.getElementById('clone-save-btn');
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'Saving…';
+
+  try {
+    // 1. Create cloned event on new date
+    const created = await apiWrite('POST',
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(ev.calId)}/events`,
+      {
+        summary:     ev.title,
+        start:       { dateTime: toOffsetISO(newStart) },
+        end:         { dateTime: toOffsetISO(newEnd) },
+        description: tentPrefix(cloneDesc),
+        location:    ev.location || undefined,
+      }
+    );
+    const cs = created.start?.dateTime || created.start?.date;
+    const ce = created.end?.dateTime   || created.end?.date;
+    if (!cachedEvents[ev.calId]) cachedEvents[ev.calId] = [];
+    cachedEvents[ev.calId].push({
+      id: created.id, calId: ev.calId,
+      title: created.summary || '(No title)',
+      start: new Date(cs), end: new Date(ce),
+      desc: cloneDesc, location: ev.location || '',
+      isTentative: ev.isTentative,
+      meetLink: created.hangoutLink || '',
+    });
+
+    // 2. Patch original event's description (ND = new date)
+    await apiWrite('PATCH',
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(ev.calId)}/events/${encodeURIComponent(ev.id)}`,
+      { description: tentPrefix(origDesc) }
+    );
+    const idx = (cachedEvents[ev.calId] || []).findIndex(e => e.id === ev.id);
+    if (idx !== -1) cachedEvents[ev.calId][idx] = { ...cachedEvents[ev.calId][idx], desc: origDesc };
+
+    closeCloneModal();
+    renderGrid();
+  } catch (e) {
+    alert('Clone failed: ' + e.message);
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Clone & Save';
+  }
+}
+
+document.getElementById('clone-save-btn').addEventListener('click', saveCloneModal);
+document.getElementById('clone-cancel-btn').addEventListener('click', closeCloneModal);
+document.getElementById('clone-backdrop').addEventListener('click', e => {
+  if (e.target === document.getElementById('clone-backdrop')) closeCloneModal();
+});
 
 function toLocalDatetimeValue(d) {
   const pad = n => String(n).padStart(2, '0');
@@ -3160,6 +3326,11 @@ function openSettings() {
   document.getElementById('perm-edit').checked   = permissions.edit;
   document.getElementById('perm-move').checked   = permissions.move;
   document.getElementById('perm-delete').checked = permissions.delete;
+  document.getElementById('perm-clone').checked  = permissions.clone;
+  // Disable the 4 toggles when clone is active
+  ['add','edit','move','delete'].forEach(p => {
+    document.getElementById('perm-' + p).disabled = permissions.clone;
+  });
 
   document.getElementById('settings-backdrop').classList.add('open');
 }
@@ -3174,6 +3345,26 @@ function closeSettings() {
     savePrefs();
     renderGrid(); // re-render to add/remove handles and click handlers
   });
+});
+
+document.getElementById('perm-clone').addEventListener('change', e => {
+  permissions.clone = e.target.checked;
+  if (permissions.clone) {
+    // Disable and turn off the 4 other permissions
+    ['add','edit','move','delete'].forEach(p => {
+      permissions[p] = false;
+      const el = document.getElementById('perm-' + p);
+      if (el) { el.checked = false; el.disabled = true; }
+    });
+  } else {
+    // Re-enable the 4 toggles (keep them off; user re-enables manually)
+    ['add','edit','move','delete'].forEach(p => {
+      const el = document.getElementById('perm-' + p);
+      if (el) el.disabled = false;
+    });
+  }
+  savePrefs();
+  renderGrid();
 });
 
 // ── DRAG-TO-MOVE & RESIZE ─────────────────────────────────────────────────────
