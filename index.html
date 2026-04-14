@@ -930,6 +930,80 @@ body.dark .shared-row { border-bottom-color: #2a2a3a; background: rgba(255,255,2
   .client-view-btn { padding: 4px 7px; }
   .client-view-btn .btn-label { display: none; }
 }
+
+/* ── AGENDA VIEW ──────────────────────────────────────────────────────────── */
+.agenda-wrapper {
+  display: flex;
+  flex-direction: column;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 12px 16px 24px;
+}
+.agenda-group { display: flex; flex-direction: column; margin-bottom: 4px; }
+.agenda-date-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 0 4px;
+  border-bottom: 2px solid #e0e0e0;
+  margin-bottom: 2px;
+  position: sticky;
+  top: 0;
+  background: #f0f2f5;
+  z-index: 2;
+}
+body.dark .agenda-date-header { border-bottom-color: #2a2a4a; background: #1a1a2e; }
+.agenda-date-header.agenda-today .agenda-weekday,
+.agenda-date-header.agenda-today .agenda-date-num { color: #1a73e8; }
+body.dark .agenda-date-header.agenda-today .agenda-weekday,
+body.dark .agenda-date-header.agenda-today .agenda-date-num { color: #8ab4f8; }
+.agenda-weekday { font-size: 13px; font-weight: 700; color: #1a1a1a; }
+body.dark .agenda-weekday { color: #e0e0e0; }
+.agenda-date-num { font-size: 12px; font-weight: 500; color: #666; }
+body.dark .agenda-date-num { color: #888; }
+.agenda-empty { padding: 6px 0 6px 4px; font-size: 12px; color: #bbb; font-style: italic; }
+body.dark .agenda-empty { color: #444; }
+.agenda-event {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 6px 6px 6px 10px;
+  border-left: 4px solid transparent;
+  border-radius: 0 6px 6px 0;
+  margin: 2px 0;
+  background: rgba(0,0,0,0.02);
+  transition: background 0.12s, box-shadow 0.12s;
+  cursor: default;
+}
+.agenda-event:hover { background: rgba(0,0,0,0.05); box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+body.dark .agenda-event { background: rgba(255,255,255,0.03); }
+body.dark .agenda-event:hover { background: rgba(255,255,255,0.07); }
+.agenda-event.agenda-past { opacity: 0.45; }
+.agenda-event.agenda-tentative { border-left-style: dashed; opacity: 0.75; }
+.agenda-event-time {
+  flex-shrink: 0;
+  width: 128px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #555;
+  padding-top: 2px;
+  white-space: nowrap;
+}
+body.dark .agenda-event-time { color: #888; }
+.agenda-event-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.agenda-event-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agenda-event-location { font-size: 11px; color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.dark .agenda-event-location { color: #666; }
+.agenda-event-cal { font-size: 10px; font-weight: 600; opacity: 0.65; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 600px) {
+  .agenda-event { flex-direction: column; gap: 2px; padding: 6px 6px 6px 8px; }
+  .agenda-event-time { width: auto; font-size: 10px; }
+  .agenda-event-title { font-size: 12px; }
+  .agenda-wrapper { padding: 8px 10px 20px; }
+  .agenda-date-header { padding: 8px 0 3px; }
+  .agenda-weekday { font-size: 12px; }
+  .agenda-date-num { font-size: 11px; }
+}
 </style>
 </head>
 <body>
@@ -963,6 +1037,9 @@ body.dark .shared-row { border-bottom-color: #2a2a3a; background: rgba(255,255,2
       </button>
       <button id="single-client-btn" class="client-view-btn" title="Focus on one client" style="display:none">
         <span class="btn-icon">🧒</span><span class="btn-label">One Client</span>
+      </button>
+      <button id="agenda-view-btn" class="client-view-btn" title="Switch to agenda view" style="display:none">
+        <span class="btn-icon">☰</span><span class="btn-label">Agenda</span>
       </button>
 
       <div class="nav-btns">
@@ -1072,6 +1149,10 @@ body.dark .shared-row { border-bottom-color: #2a2a3a; background: rgba(255,255,2
         <span>Enable One Client View</span>
         <label class="toggle-switch"><input type="checkbox" id="single-client-enabled-chk"><span class="slider"></span></label>
       </div>
+      <div class="settings-row">
+        <span>Enable Agenda View</span>
+        <label class="toggle-switch"><input type="checkbox" id="agenda-view-enabled-chk"><span class="slider"></span></label>
+      </div>
     </div>
 
     <div class="settings-section">
@@ -1133,6 +1214,8 @@ let singleClientName    = '';      // selected client name
 let singleClientFilter  = new Set(); // session types (therapyType) to show
 let singleClientHideTherapist = false; // strip therapist name from display title
 let clientViewHideLabels = false;       // hide client-name labels row in By Client view
+let agendaViewEnabled = false; // gated by settings toggle
+let agendaViewMode    = false; // active when "Agenda" button is on
 let columnWidths = { '1': [], '3': [], '7': [] }; // per-view day column widths (px)
 let laneWidths   = { '1': [], '3': [], '7': [] }; // per-view calendar sub-column widths (px)
 
@@ -1155,6 +1238,8 @@ function savePrefs() {
     singleClientFilter:  [...singleClientFilter],
     singleClientHideTherapist,
     clientViewHideLabels,
+    agendaViewEnabled,
+    agendaViewMode,
     columnWidths,
     laneWidths,
   }));
@@ -1631,6 +1716,8 @@ async function initApp() {
     if (prefs.singleClientFilter)       singleClientFilter       = new Set(prefs.singleClientFilter);
     if (prefs.singleClientHideTherapist) singleClientHideTherapist = true;
     if (prefs.clientViewHideLabels) clientViewHideLabels = true;
+    if (prefs.agendaViewEnabled) agendaViewEnabled = true;
+    if (prefs.agendaViewMode)    agendaViewMode    = true;
     if (prefs.columnWidths && typeof prefs.columnWidths === 'object') {
       columnWidths = {
         '1': Array.isArray(prefs.columnWidths['1']) ? prefs.columnWidths['1'] : [],
@@ -1775,7 +1862,115 @@ function layoutEvents(events) {
   return result;
 }
 
+// ── AGENDA VIEW ───────────────────────────────────────────────────────────────
+function renderAgendaView() {
+  const grid = document.getElementById('cal-grid');
+  grid.innerHTML = '';
+
+  const viewStart = getViewStart();
+  const days = Array.from({ length: viewDays }, (_, i) => addDays(viewStart, i));
+  updateDateLabel(days);
+
+  const today = fmtDate(startOfToday());
+
+  // Group events from active calendars by date string
+  const byDate = new Map();
+  days.forEach(d => byDate.set(fmtDate(d), []));
+
+  calendarList
+    .filter(cal => activeCalendars.has(cal.id))
+    .forEach(cal => {
+      (cachedEvents[cal.id] || []).forEach(ev => {
+        const ds = fmtDate(ev.start);
+        if (byDate.has(ds)) byDate.get(ds).push({ ev, cal });
+      });
+    });
+
+  // Sort events within each day by start time
+  byDate.forEach(items => items.sort((a, b) => a.ev.start - b.ev.start));
+
+  const isDark = document.body.classList.contains('dark');
+  const wrapper = el('div', 'agenda-wrapper');
+
+  days.forEach(d => {
+    const ds = fmtDate(d);
+    const items = byDate.get(ds) || [];
+    const isTodayDay = ds === today;
+
+    const group = el('div', 'agenda-group');
+
+    // Date header
+    const header = el('div', 'agenda-date-header' + (isTodayDay ? ' agenda-today' : ''));
+    const wdEl = el('span', 'agenda-weekday');
+    wdEl.textContent = DAY_FULL[d.getDay()];
+    const dnEl = el('span', 'agenda-date-num');
+    dnEl.textContent = `${MONTH_ABR[d.getMonth()]} ${d.getDate()}`;
+    header.appendChild(wdEl);
+    header.appendChild(dnEl);
+    group.appendChild(header);
+
+    if (items.length === 0) {
+      const empty = el('div', 'agenda-empty');
+      empty.textContent = 'No events';
+      group.appendChild(empty);
+    } else {
+      const now = new Date();
+      items.forEach(({ ev, cal }) => {
+        const color = cal.backgroundColor || '#4285f4';
+        const isPast = ev.end < now;
+
+        const row = el('div',
+          'agenda-event' +
+          (isPast ? ' agenda-past' : '') +
+          (ev.isTentative ? ' agenda-tentative' : '')
+        );
+        row.style.borderLeftColor = color;
+
+        const timeEl = el('div', 'agenda-event-time');
+        timeEl.textContent = `${fmtTime(ev.start)} – ${fmtTime(ev.end)}`;
+
+        const bodyEl = el('div', 'agenda-event-body');
+
+        const titleEl = el('div', 'agenda-event-title');
+        titleEl.textContent = ev.title;
+        titleEl.style.color = isDark ? color : darkenColor(color, 0.35);
+        bodyEl.appendChild(titleEl);
+
+        if (ev.location) {
+          const locEl = el('div', 'agenda-event-location');
+          locEl.textContent = ev.location;
+          bodyEl.appendChild(locEl);
+        }
+
+        const calChip = el('span', 'agenda-event-cal');
+        calChip.textContent = cal.summary;
+        calChip.style.color = color;
+        bodyEl.appendChild(calChip);
+
+        row.appendChild(timeEl);
+        row.appendChild(bodyEl);
+
+        if (permissions.edit) {
+          row.style.cursor = 'pointer';
+          row.addEventListener('click', () => { hideTooltip(); openEditModal(ev); });
+        }
+
+        row.addEventListener('mouseenter', e => showTooltip(e, ev, cal));
+        row.addEventListener('mousemove',  e => moveTooltip(e));
+        row.addEventListener('mouseleave', hideTooltip);
+
+        group.appendChild(row);
+      });
+    }
+
+    wrapper.appendChild(group);
+  });
+
+  grid.appendChild(wrapper);
+}
+
 function renderGrid() {
+  if (agendaViewEnabled && agendaViewMode) { renderAgendaView(); return; }
   if (singleClientEnabled && singleClientMode) { renderSingleClientGrid(); return; }
   if (clientViewEnabled && clientViewMode) { renderClientGrid(); return; }
   const grid = document.getElementById('cal-grid');
@@ -2067,6 +2262,11 @@ function updateClientViewBtn() {
   if (sBtn) {
     sBtn.style.display = singleClientEnabled ? '' : 'none';
     sBtn.classList.toggle('active', singleClientMode);
+  }
+  const aBtn = document.getElementById('agenda-view-btn');
+  if (aBtn) {
+    aBtn.style.display = agendaViewEnabled ? '' : 'none';
+    aBtn.classList.toggle('active', agendaViewMode);
   }
 }
 
@@ -2953,6 +3153,7 @@ function openSettings() {
   // Populate client view toggles
   document.getElementById('client-view-enabled-chk').checked   = clientViewEnabled;
   document.getElementById('single-client-enabled-chk').checked = singleClientEnabled;
+  document.getElementById('agenda-view-enabled-chk').checked   = agendaViewEnabled;
 
   // Populate permissions
   document.getElementById('perm-add').checked    = permissions.add;
@@ -3200,7 +3401,7 @@ document.getElementById('refresh-btn').addEventListener('click', refreshEvents);
 
 document.getElementById('client-view-btn').addEventListener('click', () => {
   clientViewMode   = !clientViewMode;
-  if (clientViewMode) singleClientMode = false; // mutual exclusivity
+  if (clientViewMode) { singleClientMode = false; agendaViewMode = false; } // mutual exclusivity
   updateClientViewBtn();
   savePrefs();
   renderToggles();
@@ -3218,7 +3419,7 @@ document.getElementById('client-view-enabled-chk').addEventListener('change', e 
 
 document.getElementById('single-client-btn').addEventListener('click', () => {
   singleClientMode = !singleClientMode;
-  if (singleClientMode) clientViewMode = false; // mutual exclusivity
+  if (singleClientMode) { clientViewMode = false; agendaViewMode = false; } // mutual exclusivity
   updateClientViewBtn();
   savePrefs();
   renderToggles();
@@ -3234,6 +3435,23 @@ document.getElementById('single-client-enabled-chk').addEventListener('change', 
   renderGrid();
 });
 
+document.getElementById('agenda-view-btn').addEventListener('click', () => {
+  agendaViewMode = !agendaViewMode;
+  if (agendaViewMode) { clientViewMode = false; singleClientMode = false; } // mutual exclusivity
+  updateClientViewBtn();
+  savePrefs();
+  renderToggles();
+  renderGrid();
+});
+
+document.getElementById('agenda-view-enabled-chk').addEventListener('change', e => {
+  agendaViewEnabled = e.target.checked;
+  if (!agendaViewEnabled) agendaViewMode = false;
+  updateClientViewBtn();
+  savePrefs();
+  renderToggles();
+  renderGrid();
+});
 
 document.querySelectorAll('.view-btn').forEach(btn => {
   btn.addEventListener('click', () => {
