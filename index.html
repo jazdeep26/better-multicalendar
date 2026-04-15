@@ -812,15 +812,37 @@ body.dark .settings-row { border-bottom-color: #2a2a3a; }
 .toggle-switch input:checked + .slider::before { transform: translateX(16px); }
 
 /* ── EVENT DRAG & RESIZE ── */
-.event.dragging-event { opacity: 0.5; }
+.event.dragging-event { opacity: 0.35; }
 .event-ghost {
-  position: absolute;
+  position: fixed;
   border-radius: 6px;
   pointer-events: none;
-  z-index: 50;
-  opacity: 0.75;
+  z-index: 9999;
+  opacity: 0.85;
   border-left: 3px solid transparent;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  min-width: 60px;
+  overflow: hidden;
+  padding: 3px 5px;
+  font-size: 11px;
 }
+.event-ghost.clone-ghost { border-style: dashed; border-width: 2px; }
+.event-ghost.clone-ghost::after {
+  content: '+';
+  position: absolute;
+  top: 2px; right: 4px;
+  font-size: 13px; font-weight: 700;
+  opacity: 0.7;
+}
+.lane-col.drop-target { outline: 2px dashed #1a73e8; outline-offset: -2px; background: rgba(26,115,232,0.06); }
+body.dark .lane-col.drop-target { outline-color: #8ab4f8; background: rgba(138,180,248,0.07); }
+.undo-toast {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  background: #333; color: #fff; padding: 8px 16px; border-radius: 8px;
+  font-size: 13px; z-index: 9998; pointer-events: none;
+  opacity: 0; transition: opacity 0.2s;
+}
+.undo-toast.visible { opacity: 1; }
 .resize-handle {
   position: absolute;
   left: 0; right: 0;
@@ -1156,6 +1178,7 @@ body.dark .agenda-event-location { color: #666; }
 </div>
 
 <div class="tooltip" id="tooltip"></div>
+<div class="undo-toast" id="undo-toast"></div>
 
 <!-- EVENT MODAL -->
 <div class="modal-backdrop" id="modal-backdrop">
@@ -2254,6 +2277,7 @@ function renderGrid() {
   const daysArea = el('div', 'days-area');
   days.forEach(d => {
     const dayCol = el('div', 'day-col' + (isToday(d) ? ' today-col' : ''));
+    dayCol.dataset.date = fmtDate(d);
     const totalH = TOTAL_HRS * hourPx;
     dayCol.style.minHeight = totalH + 'px';
 
@@ -2270,6 +2294,7 @@ function renderGrid() {
     // Lane columns
     activeCals.forEach(cal => {
       const lane = el('div', 'lane-col');
+      lane.dataset.calId = cal.id;
       lane.style.minHeight = totalH + 'px';
 
       if (permissions.add) {
@@ -3541,9 +3566,110 @@ document.getElementById('perm-clone').addEventListener('change', e => {
 });
 
 // ── DRAG-TO-MOVE & RESIZE ─────────────────────────────────────────────────────
-let dragState = null; // { type:'move'|'resize-top'|'resize-bottom', ev, calColor, laneEl, dayDate, origStart, origEnd, ghostEl, origTop, origHeight, pxPerMin }
+let dragState = null;
 
+// ── UNDO / REDO ───────────────────────────────────────────────────────────────
+const MAX_HISTORY = 3;
+const undoStack = [];
+const redoStack = [];
+
+function pushUndo(entry) {
+  undoStack.push(entry);
+  if (undoStack.length > MAX_HISTORY) undoStack.shift();
+  redoStack.length = 0; // clear redo on new action
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById('undo-toast');
+  t.textContent = msg;
+  t.classList.add('visible');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('visible'), 1800);
+}
+
+function toOffsetISO(d) {
+  const off = -d.getTimezoneOffset();
+  const sign = off >= 0 ? '+' : '-';
+  const pad = n => String(Math.abs(n)).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00${sign}${pad(Math.floor(Math.abs(off)/60))}:${pad(Math.abs(off)%60)}`;
+}
+
+async function applyHistoryEntry(entry, direction) {
+  // direction: 'undo' reverts, 'redo' re-applies
+  if (entry.type === 'clone') {
+    if (direction === 'undo') {
+      // Delete the cloned event
+      try {
+        await apiWrite('DELETE',
+          `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(entry.newCalId)}/events/${encodeURIComponent(entry.clonedId)}?sendUpdates=none`
+        );
+        cachedEvents[entry.newCalId] = (cachedEvents[entry.newCalId] || []).filter(e => e.id !== entry.clonedId);
+        renderGrid();
+        showToast('Clone undone');
+      } catch(err) { alert('Undo failed: ' + err.message); }
+    } else {
+      // Re-clone the original event at the saved new time
+      try {
+        const origEv = (cachedEvents[entry.origCalId] || []).find(e => e.id === entry.origId);
+        if (!origEv) { showToast('Original event not found'); return; }
+        const body = { summary: origEv.title, description: origEv.desc || '', location: origEv.location || '',
+          start: { dateTime: toOffsetISO(entry.newStart) }, end: { dateTime: toOffsetISO(entry.newEnd) } };
+        const created = await apiWrite('POST',
+          `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(entry.newCalId)}/events?sendUpdates=none`, body);
+        const cs = created.start?.dateTime || created.start?.date;
+        const ce = created.end?.dateTime   || created.end?.date;
+        const newEvObj = { id: created.id, calId: entry.newCalId, title: created.summary || origEv.title,
+          start: new Date(cs), end: new Date(ce), desc: origEv.desc || '', location: origEv.location || '',
+          isTentative: false, meetLink: '' };
+        if (!cachedEvents[entry.newCalId]) cachedEvents[entry.newCalId] = [];
+        cachedEvents[entry.newCalId].push(newEvObj);
+        entry.clonedId = created.id; // update for future undo
+        renderGrid();
+        showToast('Clone redone');
+      } catch(err) { alert('Redo failed: ' + err.message); }
+    }
+  } else {
+    // move / resize
+    const ev = (cachedEvents[entry.calId] || []).find(e => e.id === entry.evId);
+    if (!ev) { showToast('Event not found'); return; }
+    const targetStart = direction === 'undo' ? entry.prevStart : entry.nextStart;
+    const targetEnd   = direction === 'undo' ? entry.prevEnd   : entry.nextEnd;
+    const prevStart = new Date(ev.start), prevEnd = new Date(ev.end);
+    ev.start = new Date(targetStart);
+    ev.end   = new Date(targetEnd);
+    renderGrid();
+    try {
+      await apiWrite('PATCH',
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(ev.calId)}/events/${encodeURIComponent(ev.id)}`,
+        { start: { dateTime: toOffsetISO(ev.start) }, end: { dateTime: toOffsetISO(ev.end) } }
+      );
+      showToast(direction === 'undo' ? 'Move undone' : 'Move redone');
+    } catch(err) {
+      ev.start = prevStart; ev.end = prevEnd;
+      renderGrid();
+      alert((direction === 'undo' ? 'Undo' : 'Redo') + ' failed: ' + err.message);
+    }
+  }
+}
+
+// ── DRAG ─────────────────────────────────────────────────────────────────────
 function snapToQuarter(mins) { return Math.round(mins / 15) * 15; }
+
+function getLaneUnderCursor(clientX, clientY) {
+  // Temporarily hide ghost so elementFromPoint can see through it
+  const ghost = dragState?.ghostEl;
+  if (ghost) ghost.style.display = 'none';
+  const el = document.elementFromPoint(clientX, clientY);
+  if (ghost) ghost.style.display = '';
+  if (!el) return null;
+  // Walk up to find lane-col
+  const lane = el.closest('.lane-col');
+  if (!lane) return null;
+  const dayCol = lane.closest('.day-col');
+  if (!dayCol) return null;
+  return { lane, dayCol, calId: lane.dataset.calId, dateStr: dayCol.dataset.date };
+}
 
 function attachEventInteraction(evEl, ev, cal, laneEl, d, pxPerMin) {
   const color = cal.backgroundColor || '#4285f4';
@@ -3553,16 +3679,16 @@ function attachEventInteraction(evEl, ev, cal, laneEl, d, pxPerMin) {
       if (e.target.classList.contains('resize-handle')) return;
       e.preventDefault(); e.stopPropagation();
       hideTooltip();
-      startDrag('move', e, ev, color, laneEl, d, pxPerMin, evEl);
+      const isClone = e.metaKey || e.ctrlKey;
+      startDrag('move', e.clientX, e.clientY, ev, cal, color, laneEl, d, pxPerMin, evEl, isClone);
     });
     evEl.addEventListener('touchstart', e => {
       if (e.target.classList.contains('resize-handle')) return;
-      // Only start drag after a brief hold (150ms) to distinguish tap from drag
       const touch = e.touches[0];
       const holdTimer = setTimeout(() => {
         e.preventDefault();
         hideTooltip();
-        startDrag('move', touch, ev, color, laneEl, d, pxPerMin, evEl);
+        startDrag('move', touch.clientX, touch.clientY, ev, cal, color, laneEl, d, pxPerMin, evEl, false);
         evEl._touchDragging = true;
       }, 150);
       evEl._touchHoldTimer = holdTimer;
@@ -3583,87 +3709,116 @@ function attachEventInteraction(evEl, ev, cal, laneEl, d, pxPerMin) {
 
     topHandle.addEventListener('mousedown', e => {
       e.preventDefault(); e.stopPropagation();
-      startDrag('resize-top', e, ev, color, laneEl, d, pxPerMin, evEl);
+      startDrag('resize-top', e.clientX, e.clientY, ev, cal, color, laneEl, d, pxPerMin, evEl, false);
     });
     botHandle.addEventListener('mousedown', e => {
       e.preventDefault(); e.stopPropagation();
-      startDrag('resize-bottom', e, ev, color, laneEl, d, pxPerMin, evEl);
+      startDrag('resize-bottom', e.clientX, e.clientY, ev, cal, color, laneEl, d, pxPerMin, evEl, false);
     });
     topHandle.addEventListener('touchstart', e => {
       e.preventDefault(); e.stopPropagation();
-      startDrag('resize-top', e.touches[0], ev, color, laneEl, d, pxPerMin, evEl);
+      startDrag('resize-top', e.touches[0].clientX, e.touches[0].clientY, ev, cal, color, laneEl, d, pxPerMin, evEl, false);
     }, { passive: false });
     botHandle.addEventListener('touchstart', e => {
       e.preventDefault(); e.stopPropagation();
-      startDrag('resize-bottom', e.touches[0], ev, color, laneEl, d, pxPerMin, evEl);
+      startDrag('resize-bottom', e.touches[0].clientX, e.touches[0].clientY, ev, cal, color, laneEl, d, pxPerMin, evEl, false);
     }, { passive: false });
   }
 }
 
-function startDrag(type, e, ev, color, laneEl, d, pxPerMin, evEl) {
-  const laneRect = laneEl.getBoundingClientRect();
+function startDrag(type, clientX, clientY, ev, cal, color, laneEl, d, pxPerMin, evEl, isClone) {
+  const evRect   = evEl.getBoundingClientRect();
   const startMins = (ev.start.getHours() - START_HOUR) * 60 + ev.start.getMinutes();
   const endMins   = (ev.end.getHours()   - START_HOUR) * 60 + ev.end.getMinutes();
-  const top    = startMins * pxPerMin;
   const height = Math.max(20, (endMins - startMins) * pxPerMin - 2);
+  const width  = evRect.width;
 
-  // Create ghost
+  // Grab offset: where within the event the user clicked
+  const grabOffsetY = clientY - evRect.top;
+  const grabOffsetX = clientX - evRect.left;
+
+  // Ghost: fixed-position, follows cursor
   const ghost = document.createElement('div');
-  ghost.className = 'event-ghost';
-  ghost.style.cssText = `top:${top}px;height:${height}px;left:${evEl.style.left};width:${evEl.style.width};background:${color}44;border-left-color:${color};color:${color};`;
-  ghost.innerHTML = evEl.innerHTML;
-  laneEl.appendChild(ghost);
+  ghost.className = 'event-ghost' + (isClone ? ' clone-ghost' : '');
+  ghost.style.cssText = `
+    left:${clientX - grabOffsetX}px; top:${clientY - grabOffsetY}px;
+    width:${width}px; height:${height}px;
+    background:${color}44; border-left-color:${color}; color:${color};`;
+  ghost.innerHTML = `<div class="ev-title">${escHtml(ev.title)}</div><div class="ev-time">${minsToTimeStr(startMins)}–${minsToTimeStr(endMins)}</div>`;
+  document.body.appendChild(ghost);
 
   evEl.classList.add('dragging-event');
+  laneEl.classList.add('drop-target');
 
   dragState = {
-    type, ev, color, laneEl, laneRect, dayDate: d, pxPerMin,
+    type, ev, cal, color, laneEl, dayDate: d, pxPerMin,
     evEl, ghostEl: ghost,
-    origTop: top, origHeight: height,
     origStartMins: startMins, origEndMins: endMins,
-    mouseStartY: e.clientY,
+    mouseStartY: clientY, mouseStartX: clientX,
+    grabOffsetY, grabOffsetX,
+    isClone,
+    currentLane: laneEl, currentCalId: cal.id, currentDateStr: fmtDate(d),
   };
 }
 
-function handleDragMove(clientY) {
+function handleDragMove(clientX, clientY) {
   if (!dragState) return;
-  const { type, origStartMins, origEndMins, pxPerMin, ghostEl } = dragState;
+  const { type, origStartMins, origEndMins, pxPerMin, ghostEl, grabOffsetY, grabOffsetX } = dragState;
   const dy = clientY - dragState.mouseStartY;
   const deltaMins = snapToQuarter(dy / pxPerMin);
 
+  // Move ghost to cursor
+  ghostEl.style.left = (clientX - grabOffsetX) + 'px';
+  ghostEl.style.top  = (clientY - grabOffsetY) + 'px';
+
+  // Update time display
   if (type === 'move') {
     const newStartMins = Math.max(0, Math.min(origStartMins + deltaMins, TOTAL_HRS * 60 - 15));
     const dur = origEndMins - origStartMins;
     const newEndMins = newStartMins + dur;
-    ghostEl.style.top    = (newStartMins * pxPerMin) + 'px';
-    ghostEl.style.height = Math.max(20, dur * pxPerMin - 2) + 'px';
     ghostEl.innerHTML = `<div class="ev-title">${escHtml(dragState.ev.title)}</div><div class="ev-time">${minsToTimeStr(newStartMins)}–${minsToTimeStr(newEndMins)}</div>`;
+    if (dragState.isClone) ghostEl.innerHTML += '<span style="position:absolute;top:2px;right:4px;font-weight:700;font-size:13px">+</span>';
+
+    // Highlight target lane
+    const target = getLaneUnderCursor(clientX, clientY);
+    if (target && target.lane !== dragState.currentLane) {
+      dragState.currentLane.classList.remove('drop-target');
+      dragState.currentLane = target.lane;
+      dragState.currentCalId = target.calId;
+      dragState.currentDateStr = target.dateStr;
+      target.lane.classList.add('drop-target');
+    }
   } else if (type === 'resize-top') {
     const newStartMins = Math.max(0, Math.min(origStartMins + deltaMins, origEndMins - 15));
-    ghostEl.style.top    = (newStartMins * pxPerMin) + 'px';
-    ghostEl.style.height = Math.max(20, (origEndMins - newStartMins) * pxPerMin - 2) + 'px';
+    const newH = Math.max(20, (origEndMins - newStartMins) * pxPerMin - 2);
+    ghostEl.style.height = newH + 'px';
     ghostEl.innerHTML = `<div class="ev-title">${escHtml(dragState.ev.title)}</div><div class="ev-time">${minsToTimeStr(newStartMins)}–${minsToTimeStr(origEndMins)}</div>`;
   } else if (type === 'resize-bottom') {
     const newEndMins = Math.max(origStartMins + 15, Math.min(origEndMins + deltaMins, TOTAL_HRS * 60));
-    ghostEl.style.height = Math.max(20, (newEndMins - origStartMins) * pxPerMin - 2) + 'px';
+    const newH = Math.max(20, (newEndMins - origStartMins) * pxPerMin - 2);
+    ghostEl.style.height = newH + 'px';
     ghostEl.innerHTML = `<div class="ev-title">${escHtml(dragState.ev.title)}</div><div class="ev-time">${minsToTimeStr(origStartMins)}–${minsToTimeStr(newEndMins)}</div>`;
   }
 }
 
-document.addEventListener('mousemove', e => { handleDragMove(e.clientY); });
+document.addEventListener('mousemove', e => { handleDragMove(e.clientX, e.clientY); });
 document.addEventListener('touchmove', e => {
   if (!dragState) return;
   e.preventDefault();
-  handleDragMove(e.touches[0].clientY);
+  handleDragMove(e.touches[0].clientX, e.touches[0].clientY);
 }, { passive: false });
 
-async function handleDragEnd(clientY) {
+async function handleDragEnd(clientX, clientY) {
   if (!dragState) return;
-  const { type, ev, laneEl, dayDate, pxPerMin, ghostEl, evEl, origStartMins, origEndMins } = dragState;
+  const { type, ev, cal, laneEl, dayDate, pxPerMin, ghostEl, evEl,
+          origStartMins, origEndMins, isClone,
+          currentCalId, currentDateStr } = dragState;
   const dy = clientY - dragState.mouseStartY;
   const deltaMins = snapToQuarter(dy / pxPerMin);
   dragState = null;
 
+  // Clean up drop highlights
+  document.querySelectorAll('.lane-col.drop-target').forEach(l => l.classList.remove('drop-target'));
   ghostEl.remove();
   evEl.classList.remove('dragging-event');
 
@@ -3679,44 +3834,125 @@ async function handleDragEnd(clientY) {
     newEndMins   = Math.max(origStartMins + 15, Math.min(origEndMins + deltaMins, TOTAL_HRS * 60));
   }
 
-  if (newStartMins === origStartMins && newEndMins === origEndMins) return; // no change
+  // For move: determine target date from drop position
+  let targetDateStr = fmtDate(dayDate);
+  if (type === 'move') {
+    // Use the lane we last tracked (cross-lane/date)
+    targetDateStr = currentDateStr || fmtDate(dayDate);
+  }
 
-  const newStart = new Date(dayDate);
+  const targetDate = targetDateStr ? (() => { const [y,m,d2] = targetDateStr.split('-').map(Number); return new Date(y, m-1, d2); })() : new Date(dayDate);
+
+  const newStart = new Date(targetDate);
   newStart.setHours(START_HOUR, 0, 0, 0);
   newStart.setMinutes(newStart.getMinutes() + newStartMins);
-  const newEnd = new Date(dayDate);
+  const newEnd = new Date(targetDate);
   newEnd.setHours(START_HOUR, 0, 0, 0);
   newEnd.setMinutes(newEnd.getMinutes() + newEndMins);
 
-  // Optimistic update
+  const noTimeChange   = newStartMins === origStartMins && newEndMins === origEndMins;
+  const noDateChange   = targetDateStr === fmtDate(dayDate);
+  const noLaneChange   = !currentCalId || currentCalId === ev.calId;
+  if (noTimeChange && noDateChange && (type !== 'move' || noLaneChange)) return;
+
+  const targetCalId = (type === 'move' && currentCalId) ? currentCalId : ev.calId;
+  const targetCal   = calendarList.find(c => c.id === targetCalId) || cal;
+
+  if (isClone && type === 'move') {
+    // ── CLONE ──
+    const origId    = ev.id;
+    const origCalId = ev.calId;
+    try {
+      const body = {
+        summary:     ev.title,
+        description: ev.desc || '',
+        location:    ev.location || '',
+        start: { dateTime: toOffsetISO(newStart) },
+        end:   { dateTime: toOffsetISO(newEnd) },
+      };
+      const created = await apiWrite('POST',
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(targetCalId)}/events?sendUpdates=none`,
+        body
+      );
+      const cs = created.start?.dateTime || created.start?.date;
+      const ce = created.end?.dateTime   || created.end?.date;
+      const newEvObj = {
+        id: created.id, calId: targetCalId,
+        title: created.summary || ev.title,
+        start: new Date(cs), end: new Date(ce),
+        desc: ev.desc || '', location: ev.location || '',
+        isTentative: false, meetLink: '',
+      };
+      if (!cachedEvents[targetCalId]) cachedEvents[targetCalId] = [];
+      cachedEvents[targetCalId].push(newEvObj);
+      pushUndo({ type: 'clone', origId, origCalId, newCalId: targetCalId, clonedId: created.id, newStart, newEnd });
+      renderGrid();
+      showToast('Cloned — ⌘Z to undo');
+    } catch(err) {
+      renderGrid();
+      alert('Clone failed: ' + err.message);
+    }
+    return;
+  }
+
+  // ── MOVE / RESIZE ──
+  const prevStart = new Date(ev.start);
+  const prevEnd   = new Date(ev.end);
+  const prevCalId = ev.calId;
+
+  if (targetCalId !== ev.calId) {
+    // Cross-calendar move: create in target, delete from source
+    try {
+      const body = {
+        summary: ev.title, description: ev.desc || '', location: ev.location || '',
+        start: { dateTime: toOffsetISO(newStart) }, end: { dateTime: toOffsetISO(newEnd) },
+      };
+      const created = await apiWrite('POST',
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(targetCalId)}/events?sendUpdates=none`, body);
+      await apiWrite('DELETE',
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(ev.calId)}/events/${encodeURIComponent(ev.id)}?sendUpdates=none`);
+      cachedEvents[ev.calId] = (cachedEvents[ev.calId] || []).filter(e => e.id !== ev.id);
+      const cs = created.start?.dateTime || created.start?.date;
+      const ce = created.end?.dateTime   || created.end?.date;
+      const newEvObj = { id: created.id, calId: targetCalId, title: created.summary || ev.title,
+        start: new Date(cs), end: new Date(ce), desc: ev.desc || '', location: ev.location || '',
+        isTentative: ev.isTentative, meetLink: ev.meetLink || '' };
+      if (!cachedEvents[targetCalId]) cachedEvents[targetCalId] = [];
+      cachedEvents[targetCalId].push(newEvObj);
+      pushUndo({ type: 'move-cal', evId: created.id, calId: targetCalId,
+        prevStart, prevEnd, prevCalId, nextStart: newStart, nextEnd: newEnd, nextCalId: targetCalId });
+      renderGrid();
+      showToast('Moved — ⌘Z to undo');
+    } catch(err) {
+      renderGrid();
+      alert('Move failed: ' + err.message);
+    }
+    return;
+  }
+
+  // Same-calendar move/resize
+  const evId = ev.id;
   ev.start = newStart;
   ev.end   = newEnd;
   renderGrid();
-
   try {
-    function toOffsetISO2(d) {
-      const off = -d.getTimezoneOffset();
-      const sign = off >= 0 ? '+' : '-';
-      const pad = n => String(Math.abs(n)).padStart(2, '0');
-      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00${sign}${pad(Math.floor(Math.abs(off)/60))}:${pad(Math.abs(off)%60)}`;
-    }
     await apiWrite('PATCH',
       `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(ev.calId)}/events/${encodeURIComponent(ev.id)}`,
-      { start: { dateTime: toOffsetISO2(newStart) }, end: { dateTime: toOffsetISO2(newEnd) } }
+      { start: { dateTime: toOffsetISO(newStart) }, end: { dateTime: toOffsetISO(newEnd) } }
     );
-  } catch (err) {
-    // Revert on failure
-    ev.start = new Date(dayDate); ev.start.setHours(START_HOUR,0,0,0); ev.start.setMinutes(origStartMins);
-    ev.end   = new Date(dayDate); ev.end.setHours(START_HOUR,0,0,0);   ev.end.setMinutes(origEndMins);
+    pushUndo({ type: 'move', evId, calId: ev.calId, prevStart, prevEnd, nextStart: newStart, nextEnd: newEnd });
+    showToast('Moved — ⌘Z to undo');
+  } catch(err) {
+    ev.start = prevStart; ev.end = prevEnd;
     renderGrid();
     alert('Update failed: ' + err.message);
   }
 }
 
-document.addEventListener('mouseup',  e => handleDragEnd(e.clientY));
+document.addEventListener('mouseup',  e => handleDragEnd(e.clientX, e.clientY));
 document.addEventListener('touchend', e => {
   if (!dragState) return;
-  handleDragEnd(e.changedTouches[0].clientY);
+  handleDragEnd(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
 });
 
 function minsToTimeStr(mins) {
@@ -3745,6 +3981,23 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (document.getElementById('modal-backdrop').classList.contains('open')) { closeModal(); return; }
     if (document.getElementById('settings-backdrop').classList.contains('open')) { closeSettings(); }
+  }
+  const mod = e.metaKey || e.ctrlKey;
+  if (mod && e.key === 'z' && !e.shiftKey) {
+    e.preventDefault();
+    if (undoStack.length === 0) { showToast('Nothing to undo'); return; }
+    const entry = undoStack.pop();
+    redoStack.push(entry);
+    if (redoStack.length > MAX_HISTORY) redoStack.shift();
+    applyHistoryEntry(entry, 'undo');
+  }
+  if (mod && e.key === 'z' && e.shiftKey) {
+    e.preventDefault();
+    if (redoStack.length === 0) { showToast('Nothing to redo'); return; }
+    const entry = redoStack.pop();
+    undoStack.push(entry);
+    if (undoStack.length > MAX_HISTORY) undoStack.shift();
+    applyHistoryEntry(entry, 'redo');
   }
 });
 document.getElementById('gear-btn').addEventListener('click', openSettings);
