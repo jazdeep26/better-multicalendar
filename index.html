@@ -649,6 +649,55 @@ body.dark .btn-cancel:hover { background: #0f3460; }
 body.dark .dark-toggle-btn { background: #16213e; border-color: #2a2a4a; }
 body.dark .dark-toggle-btn:hover { background: #0f3460; }
 
+/* ── MONTH VIEW ── */
+.month-view-wrapper { display: flex; flex-direction: column; height: 100%; min-height: 480px; }
+.month-day-headers {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  border-bottom: 2px solid #e0e0e0;
+  background: #fff; position: sticky; top: 0; z-index: 5;
+}
+.month-day-header-cell {
+  padding: 6px 4px; text-align: center;
+  font-size: 11px; font-weight: 700; color: #888;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  border-right: 1px solid #e0e0e0;
+}
+.month-day-header-cell:last-child { border-right: none; }
+.month-week {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  flex: 1; border-bottom: 1px solid #e0e0e0; min-height: 80px;
+}
+.month-cell {
+  padding: 4px 5px; border-right: 1px solid #e0e0e0;
+  overflow: hidden; position: relative;
+}
+.month-cell:last-child { border-right: none; }
+.month-cell.other-month { background: #f8f9fa; }
+.month-cell.today-cell  { background: #fffef0; }
+.month-day-num {
+  font-size: 12px; font-weight: 700; color: #333; margin-bottom: 2px;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%;
+}
+.month-cell.today-cell .month-day-num { background: #1a73e8; color: #fff; }
+.month-cell.other-month .month-day-num { color: #bbb; }
+.month-event-chip {
+  font-size: 10px; padding: 1px 4px; border-radius: 3px;
+  margin-bottom: 1px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; cursor: default;
+}
+.month-more { font-size: 10px; color: #888; padding: 1px 4px; cursor: pointer; }
+.month-more:hover { color: #1a73e8; }
+body.dark .month-day-headers  { background: #16213e; border-bottom-color: #2a2a4a; }
+body.dark .month-day-header-cell { color: #666; border-right-color: #2a2a4a; }
+body.dark .month-week          { border-bottom-color: #2a2a4a; }
+body.dark .month-cell          { border-right-color: #2a2a4a; }
+body.dark .month-cell.other-month { background: #12192a; }
+body.dark .month-cell.today-cell  { background: #1a1a2e; }
+body.dark .month-day-num       { color: #ccc; }
+body.dark .month-cell.other-month .month-day-num { color: #3a3a5a; }
+body.dark .month-more          { color: #555; }
+
 @media (max-width: 600px) {
   :root { --lane-min-width: 0px; --hour-height: 52px; --time-col-width: 34px; }
   .btn-label { display: none; }
@@ -668,6 +717,9 @@ body.dark .dark-toggle-btn:hover { background: #0f3460; }
   .view-btn[data-view="1"] .vs::after { content: '1D'; }
   .view-btn[data-view="3"] .vs::after { content: '3D'; }
   .view-btn[data-view="7"] .vs::after { content: '7D'; }
+  .view-btn[data-view="month"] .vl { display: none; }
+  .view-btn[data-view="month"] .vs::after { content: '1M'; }
+  .dark-toggle-btn { display: none; }
   #date-label  { display: none; }
   .day-label   { font-size: 9px; }
   .day-number  { font-size: 13px; }
@@ -1056,6 +1108,7 @@ body.dark .agenda-event-location { color: #666; }
         <button class="view-btn" data-view="1"><span class="vl">Day</span><span class="vs"></span></button>
         <button class="view-btn active" data-view="3"><span class="vl">3 Days</span><span class="vs"></span></button>
         <button class="view-btn" data-view="7"><span class="vl">Week</span><span class="vs"></span></button>
+        <button class="view-btn" data-view="month"><span class="vl">Month</span><span class="vs"></span></button>
       </div>
       <button id="client-view-btn" class="client-view-btn" title="Switch to client view" style="display:none">
         <span class="btn-icon">👤</span><span class="btn-label">By Client</span>
@@ -1161,7 +1214,7 @@ body.dark .agenda-event-location { color: #666; }
     <div class="clone-event-label" id="clone-evt-label"></div>
     <p class="clone-date-hint" id="clone-evt-date-hint"></p>
     <div>
-      <label>New Date</label>
+      <label>Next Date</label>
       <input type="date" id="clone-new-date">
     </div>
     <div class="modal-actions">
@@ -1222,6 +1275,14 @@ body.dark .agenda-event-location { color: #666; }
     </div>
 
     <div class="settings-section">
+      <h3>Appearance</h3>
+      <div class="settings-row">
+        <span>Dark Mode</span>
+        <label class="toggle-switch"><input type="checkbox" id="settings-dark-mode"><span class="slider"></span></label>
+      </div>
+    </div>
+
+    <div class="settings-section">
       <h3>Layout</h3>
       <p style="font-size:11px;color:#888;line-height:1.5;margin:0">Drag the right edge of a day header to resize a column. Double-click the handle to reset just that column. Widths are saved per view (Day / 3 Days / Week).</p>
       <button class="btn-cancel" id="reset-col-widths-btn" style="width:100%;margin-top:4px">Reset widths for current view</button>
@@ -1262,6 +1323,7 @@ let singleClientHideTherapist = false; // strip therapist name from display titl
 let clientViewHideLabels = false;       // hide client-name labels row in By Client view
 let agendaViewEnabled = false; // gated by settings toggle
 let agendaViewMode    = false; // active when "Agenda" button is on
+let monthViewMode     = false; // active when "Month" button is on
 let columnWidths = { '1': [], '3': [], '7': [] }; // per-view day column widths (px)
 let laneWidths   = { '1': [], '3': [], '7': [] }; // per-view calendar sub-column widths (px)
 
@@ -1286,6 +1348,7 @@ function savePrefs() {
     clientViewHideLabels,
     agendaViewEnabled,
     agendaViewMode,
+    monthViewMode,
     columnWidths,
     laneWidths,
   }));
@@ -1703,8 +1766,15 @@ async function fetchEvents(calId, timeMin, timeMax) {
 }
 
 async function loadAllEvents() {
-  const timeMin = addDays(anchorDate, -7).toISOString();
-  const timeMax = addDays(anchorDate, viewDays + 7).toISOString();
+  let timeMin, timeMax;
+  if (monthViewMode) {
+    const fom = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1);
+    timeMin = addDays(fom, -7).toISOString();
+    timeMax = addDays(fom, 42).toISOString();
+  } else {
+    timeMin = addDays(anchorDate, -7).toISOString();
+    timeMax = addDays(anchorDate, viewDays + 7).toISOString();
+  }
 
   // Only sync calendars that are enabled in settings
   const active = [...activeCalendars].filter(id => enabledCalendars.has(id));
@@ -2015,7 +2085,107 @@ function renderAgendaView() {
   grid.appendChild(wrapper);
 }
 
+function renderMonthView() {
+  const grid = document.getElementById('cal-grid');
+  grid.innerHTML = '';
+
+  const firstOfMonth = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1);
+
+  // Update date label
+  const label = document.getElementById('date-label-text');
+  label.textContent = `${MONTH_ABR[firstOfMonth.getMonth()]} ${firstOfMonth.getFullYear()}`;
+  document.getElementById('status-inline').textContent = '';
+
+  // Find the Monday on or before the 1st of month
+  const startDay = new Date(firstOfMonth);
+  const dow = startDay.getDay();
+  startDay.setDate(startDay.getDate() + (dow === 0 ? -6 : 1 - dow));
+
+  // Build 6 weeks (42 days)
+  const weeks = [];
+  const cursor = new Date(startDay);
+  for (let w = 0; w < 6; w++) {
+    const week = [];
+    for (let d = 0; d < 7; d++) {
+      week.push(new Date(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    weeks.push(week);
+  }
+
+  // Collect events by date
+  const today = fmtDate(startOfToday());
+  const activeCals = calendarList.filter(c => activeCalendars.has(c.id));
+  const evsByDate = new Map();
+  activeCals.forEach(cal => {
+    (cachedEvents[cal.id] || []).forEach(ev => {
+      const ds = fmtDate(ev.start);
+      if (!evsByDate.has(ds)) evsByDate.set(ds, []);
+      evsByDate.get(ds).push({ ev, cal });
+    });
+  });
+  evsByDate.forEach(items => items.sort((a, b) => a.ev.start - b.ev.start));
+
+  const isDark = document.body.classList.contains('dark');
+  const wrapper = el('div', 'month-view-wrapper');
+
+  // Day header row
+  const dayHeaders = el('div', 'month-day-headers');
+  ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(name => {
+    const h = el('div', 'month-day-header-cell');
+    h.textContent = name;
+    dayHeaders.appendChild(h);
+  });
+  wrapper.appendChild(dayHeaders);
+
+  // Week rows
+  weeks.forEach(week => {
+    const weekRow = el('div', 'month-week');
+    week.forEach(d => {
+      const ds = fmtDate(d);
+      const isCurrentMonth = d.getMonth() === firstOfMonth.getMonth();
+      const isTodayCell    = ds === today;
+      const cell = el('div', 'month-cell' +
+        (isCurrentMonth ? '' : ' other-month') +
+        (isTodayCell ? ' today-cell' : ''));
+
+      const numEl = el('div', 'month-day-num');
+      numEl.textContent = d.getDate();
+      cell.appendChild(numEl);
+
+      const items = evsByDate.get(ds) || [];
+      const maxVisible = 3;
+      items.slice(0, maxVisible).forEach(({ ev, cal }) => {
+        const color = cal.backgroundColor || '#4285f4';
+        const chip = el('div', 'month-event-chip');
+        chip.style.background  = color + '22';
+        chip.style.color       = isDark ? color : darkenColor(color, 0.35);
+        chip.style.borderLeft  = `2px solid ${color}`;
+        chip.textContent = ev.title;
+        if (permissions.edit || permissions.clone) {
+          chip.style.cursor = 'pointer';
+          chip.addEventListener('click', e => { e.stopPropagation(); handleEventClick(ev); });
+        }
+        chip.addEventListener('mouseenter', e => showTooltip(e, ev, cal));
+        chip.addEventListener('mousemove',  e => moveTooltip(e));
+        chip.addEventListener('mouseleave', hideTooltip);
+        cell.appendChild(chip);
+      });
+      if (items.length > maxVisible) {
+        const more = el('div', 'month-more');
+        more.textContent = `+${items.length - maxVisible} more`;
+        cell.appendChild(more);
+      }
+      weekRow.appendChild(cell);
+    });
+    wrapper.appendChild(weekRow);
+  });
+
+  grid.appendChild(wrapper);
+}
+
 function renderGrid() {
+  if (monthViewMode) { renderMonthView(); return; }
   if (agendaViewEnabled && agendaViewMode) { renderAgendaView(); return; }
   if (singleClientEnabled && singleClientMode) { renderSingleClientGrid(); return; }
   if (clientViewEnabled && clientViewMode) { renderClientGrid(); return; }
@@ -3063,7 +3233,7 @@ async function saveCloneModal() {
     alert('Clone failed: ' + e.message);
   } finally {
     saveBtn.disabled = false;
-    saveBtn.textContent = 'Clone & Save';
+    saveBtn.textContent = 'Update';
   }
 }
 
@@ -3316,6 +3486,9 @@ function openSettings() {
     list.appendChild(row);
   });
 
+  // Appearance
+  document.getElementById('settings-dark-mode').checked = document.body.classList.contains('dark');
+
   // Populate client view toggles
   document.getElementById('client-view-enabled-chk').checked   = clientViewEnabled;
   document.getElementById('single-client-enabled-chk').checked = singleClientEnabled;
@@ -3560,6 +3733,10 @@ document.getElementById('dark-toggle-btn').addEventListener('click', () => {
   document.getElementById('dark-toggle-btn').textContent = isDark ? '☀️' : '🌙';
   savePrefs();
 });
+document.getElementById('settings-dark-mode').addEventListener('change', e => {
+  applyDarkPref(e.target.checked);
+  savePrefs();
+});
 document.getElementById('modal-save-btn').addEventListener('click', saveModal);
 document.getElementById('modal-delete-btn').addEventListener('click', deleteModal);
 document.getElementById('modal-cancel-btn').addEventListener('click', closeModal);
@@ -3648,18 +3825,31 @@ document.querySelectorAll('.view-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    viewDays = parseInt(btn.dataset.view);
-    if (viewDays === 7) {
-      const d = new Date(anchorDate), day = d.getDay();
-      d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
-      anchorDate = d;
+    if (btn.dataset.view === 'month') {
+      monthViewMode = true;
+    } else {
+      monthViewMode = false;
+      viewDays = parseInt(btn.dataset.view);
+      if (viewDays === 7) {
+        const d = new Date(anchorDate), day = d.getDay();
+        d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+        anchorDate = d;
+      }
     }
     savePrefs();
     renderGrid();
   });
 });
-document.getElementById('prev-btn').addEventListener('click', () => { anchorDate = addDays(anchorDate, viewDays === 7 ? -7 : -1); renderGrid(); });
-document.getElementById('next-btn').addEventListener('click', () => { anchorDate = addDays(anchorDate, viewDays === 7 ? +7 : +1); renderGrid(); });
+document.getElementById('prev-btn').addEventListener('click', () => {
+  if (monthViewMode) { anchorDate = new Date(anchorDate.getFullYear(), anchorDate.getMonth() - 1, 1); }
+  else { anchorDate = addDays(anchorDate, viewDays === 7 ? -7 : -1); }
+  renderGrid();
+});
+document.getElementById('next-btn').addEventListener('click', () => {
+  if (monthViewMode) { anchorDate = new Date(anchorDate.getFullYear(), anchorDate.getMonth() + 1, 1); }
+  else { anchorDate = addDays(anchorDate, viewDays === 7 ? +7 : +1); }
+  renderGrid();
+});
 document.getElementById('today-btn').addEventListener('click', () => { anchorDate = startOfToday(); renderGrid(); });
 
 // Refresh now-line every minute
@@ -3677,7 +3867,12 @@ setInterval(() => {
   const prefs = loadPrefs();
   if (prefs) {
     if (prefs.darkMode) applyDarkPref(true);
-    if (prefs.viewDays) {
+    if (prefs.monthViewMode) {
+      monthViewMode = true;
+      document.querySelectorAll('.view-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.view === 'month');
+      });
+    } else if (prefs.viewDays) {
       viewDays = prefs.viewDays;
       document.querySelectorAll('.view-btn').forEach(b => {
         b.classList.toggle('active', parseInt(b.dataset.view) === viewDays);
