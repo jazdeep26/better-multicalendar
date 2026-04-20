@@ -2459,11 +2459,7 @@ function renderGrid() {
 
       const events = (cachedEvents[cal.id] || []).filter(ev => {
         if (fmtDate(ev.start) !== fmtDate(d)) return false;
-        if (colorByTherapist && hiddenTherapists.size > 0) {
-          const t = getTherapistName(ev.title);
-          if (t && hiddenTherapists.has(t)) return false;
-        }
-        return true;
+        return therapistVisible(ev);
       });
       const laid = layoutEvents(events);
       const calColor = cal.backgroundColor || '#4285f4';
@@ -3772,16 +3768,19 @@ const THERAPIST_COLORS = [
   '#e91e63','#9c27b0','#3f51b5','#00897b','#f4511e',
   '#00bcd4','#8bc34a','#ff9800','#795548','#607d8b',
 ];
-function getTherapistName(evTitle) {
+// Returns array of individual therapist names from a title like "Client - Type - Sam + Jyoti"
+function getTherapistNames(evTitle) {
   const parts = evTitle.split(' - ');
-  return parts.length >= 3 ? parts[parts.length - 1].trim() : null;
+  if (parts.length < 3) return [];
+  return parts[parts.length - 1].split(/[,+]/).map(n => n.trim()).filter(Boolean);
 }
 function getAllTherapists() {
   const seen = new Set();
   const ordered = [];
   Object.values(cachedEvents).flat().forEach(ev => {
-    const t = getTherapistName(ev.title);
-    if (t && !seen.has(t)) { seen.add(t); ordered.push(t); }
+    getTherapistNames(ev.title).forEach(t => {
+      if (!seen.has(t)) { seen.add(t); ordered.push(t); }
+    });
   });
   return ordered;
 }
@@ -3792,8 +3791,16 @@ function getTherapistColor(name) {
 }
 function getEventColor(ev, calColor) {
   if (!colorByTherapist) return calColor;
-  const t = getTherapistName(ev.title);
-  return t ? getTherapistColor(t) : calColor;
+  const names = getTherapistNames(ev.title);
+  return names.length > 0 ? getTherapistColor(names[0]) : calColor;
+}
+// Returns true if the event should be visible given current therapist filter
+function therapistVisible(ev) {
+  if (!colorByTherapist || hiddenTherapists.size === 0) return true;
+  const names = getTherapistNames(ev.title);
+  if (names.length === 0) return true; // no therapist tag → always show
+  // Show if at least one therapist is NOT hidden
+  return names.some(t => !hiddenTherapists.has(t));
 }
 
 function toOffsetISO(d) {
