@@ -911,6 +911,8 @@ body.dark .ribbon-toggle-btn { background: #16213e; border-color: #2a2a4a; color
   flex-shrink: 0;
 }
 .therapist-pill.off { opacity: 0.35; filter: grayscale(0.4); }
+/* auto-disabled = no events in current view; distinct from manually toggled off */
+.therapist-pill.auto-disabled { opacity: 0.2; filter: grayscale(1); cursor: default; pointer-events: none; }
 .therapist-separator {
   width: 1px; height: 18px;
   background: #ddd;
@@ -2086,22 +2088,30 @@ function renderToggles() {
   if (colorByTherapist) {
     const allT = getAllTherapists();
     if (allT.length > 0) {
+      const inView = getTherapistsInCurrentView();
       const sep = document.createElement('div');
       sep.className = 'therapist-separator';
       container.appendChild(sep);
       allT.forEach(name => {
         const color = getTherapistColor(name);
+        const manuallyOff  = hiddenTherapists.has(name);
+        const autoDisabled = !inView.has(name) && !manuallyOff;
         const tpill = document.createElement('div');
-        tpill.className = 'therapist-pill' + (hiddenTherapists.has(name) ? ' off' : '');
+        tpill.className = 'therapist-pill'
+          + (manuallyOff  ? ' off' : '')
+          + (autoDisabled ? ' auto-disabled' : '');
         tpill.style.cssText = `background:${color}22; color:${color}; border-color:${color};`;
         tpill.innerHTML = `<span class="dot" style="background:${color}"></span>${escHtml(name)}`;
-        tpill.addEventListener('click', () => {
-          if (hiddenTherapists.has(name)) hiddenTherapists.delete(name);
-          else hiddenTherapists.add(name);
-          savePrefs();
-          renderToggles();
-          renderGrid();
-        });
+        tpill.title = autoDisabled ? 'No events in current view' : '';
+        if (!autoDisabled) {
+          tpill.addEventListener('click', () => {
+            if (hiddenTherapists.has(name)) hiddenTherapists.delete(name);
+            else hiddenTherapists.add(name);
+            savePrefs();
+            renderToggles();
+            renderGrid();
+          });
+        }
         container.appendChild(tpill);
       });
     }
@@ -3768,17 +3778,52 @@ const THERAPIST_COLORS = [
   '#e91e63','#9c27b0','#3f51b5','#00897b','#f4511e',
   '#00bcd4','#8bc34a','#ff9800','#795548','#607d8b',
 ];
-// Returns array of individual therapist names from a title like "Client - Type - Sam + Jyoti"
+// ── CALENDAR → DEFAULT THERAPIST ────────────────────────────────────────────
+// Keys are lowercase, non-alphanumeric stripped. More specific keys must come first.
+const CAL_DEFAULT_THERAPIST_MAP = [
+  ['onlineot', 'Sam'],
+  ['ot2',      'Deepa'],
+  ['speech',   'Deepak'],
+  ['aba',      'Akshaya'],
+  ['ot',       'Sam'],
+];
+// ── THERAPIST ALIASES (all lowercase) ────────────────────────────────────────
+const THERAPIST_ALIAS_MAP = {
+  'dpk':     'Deepak',
+  'smridhi': 'Sam',
+};
+function normalizeTherapist(raw) {
+  const lower = raw.trim().toLowerCase();
+  return THERAPIST_ALIAS_MAP[lower] || raw.trim();
+}
+function getCalDefaultTherapist(calSummary) {
+  if (!calSummary) return null;
+  const norm = calSummary.toLowerCase().replace(/[^a-z0-9]/g, '');
+  for (const [key, therapist] of CAL_DEFAULT_THERAPIST_MAP) {
+    if (norm.includes(key)) return therapist;
+  }
+  return null;
+}
+
+// Returns individual therapist names from title segment, normalized
 function getTherapistNames(evTitle) {
   const parts = evTitle.split(' - ');
   if (parts.length < 3) return [];
-  return parts[parts.length - 1].split(/[,+]/).map(n => n.trim()).filter(Boolean);
+  return parts[parts.length - 1].split(/[,+]/).map(normalizeTherapist).filter(Boolean);
+}
+// Returns effective therapist names — falls back to calendar default when title has no therapist
+function getEffectiveTherapists(ev) {
+  const fromTitle = getTherapistNames(ev.title);
+  if (fromTitle.length > 0) return fromTitle;
+  const cal = calendarList.find(c => c.id === ev.calId);
+  const def = getCalDefaultTherapist(cal?.summary);
+  return def ? [def] : [];
 }
 function getAllTherapists() {
   const seen = new Set();
   const ordered = [];
   Object.values(cachedEvents).flat().forEach(ev => {
-    getTherapistNames(ev.title).forEach(t => {
+    getEffectiveTherapists(ev).forEach(t => {
       if (!seen.has(t)) { seen.add(t); ordered.push(t); }
     });
   });
@@ -3791,16 +3836,34 @@ function getTherapistColor(name) {
 }
 function getEventColor(ev, calColor) {
   if (!colorByTherapist) return calColor;
-  const names = getTherapistNames(ev.title);
+  const names = getEffectiveTherapists(ev);
   return names.length > 0 ? getTherapistColor(names[0]) : calColor;
 }
 // Returns true if the event should be visible given current therapist filter
 function therapistVisible(ev) {
   if (!colorByTherapist || hiddenTherapists.size === 0) return true;
-  const names = getTherapistNames(ev.title);
-  if (names.length === 0) return true; // no therapist tag → always show
-  // Show if at least one therapist is NOT hidden
-  return names.some(t => !hiddenTherapists.has(t));
+  const names = getEffectiveTherapists(ev);
+  if (names.length === 0) return true; // no therapist resolved → always show
+  return names.some(t => !hiddenTherapists.has(t)); // show if any therapist is not hidden
+}
+// Returns set of therapist names that have at least one event in the current view range
+function getTherapistsInCurrentView() {
+  const inView = new Set();
+  let start, end;
+  if (monthViewMode) {
+    const fom = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1);
+    start = addDays(fom, -7); end = addDays(fom, 42);
+  } else {
+    start = getViewStart(); end = addDays(start, viewDays);
+  }
+  [...activeCalendars].forEach(calId => {
+    (cachedEvents[calId] || []).forEach(ev => {
+      if (ev.start >= start && ev.start < end) {
+        getEffectiveTherapists(ev).forEach(t => inView.add(t));
+      }
+    });
+  });
+  return inView;
 }
 
 function toOffsetISO(d) {
