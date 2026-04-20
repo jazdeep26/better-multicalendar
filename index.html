@@ -843,6 +843,83 @@ body.dark .lane-col.drop-target { outline-color: #8ab4f8; background: rgba(138,1
   opacity: 0; transition: opacity 0.2s;
 }
 .undo-toast.visible { opacity: 1; }
+/* ── LOCK / UNDO-REDO BUTTONS ── */
+.lock-btn {
+  width: 30px; height: 30px;
+  border: 1px solid #ddd;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 15px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.1s, border-color 0.1s;
+  flex-shrink: 0;
+}
+.lock-btn:hover { background: #f5f5f5; }
+.lock-btn.locked { background: #fff3e0; border-color: #f4a800; }
+.lock-btn.locked:hover { background: #ffe0b2; }
+body.dark .lock-btn { background: #16213e; border-color: #2a2a4a; color: #ccc; }
+body.dark .lock-btn:hover { background: #0f3460; }
+body.dark .lock-btn.locked { background: #2a1a00; border-color: #f4a800; }
+.undo-redo-btn {
+  width: 30px; height: 30px;
+  border: 1px solid #ddd;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.1s;
+  flex-shrink: 0;
+}
+.undo-redo-btn:hover:not(:disabled) { background: #f5f5f5; }
+.undo-redo-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+body.dark .undo-redo-btn { background: #16213e; border-color: #2a2a4a; color: #ccc; }
+body.dark .undo-redo-btn:hover:not(:disabled) { background: #0f3460; }
+/* ── RIBBON MINIMIZE (mobile) ── */
+.ribbon-toggle-btn {
+  margin-left: auto;
+  width: 26px; height: 22px;
+  border: 1px solid #ddd;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  display: none;
+  align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.1s;
+}
+.ribbon-toggle-btn:hover { background: #f5f5f5; }
+body.dark .ribbon-toggle-btn { background: #16213e; border-color: #2a2a4a; color: #ccc; }
+@media (max-width: 600px) { .ribbon-toggle-btn { display: flex; } }
+.topbar-row1.minimized { display: none; }
+/* ── THERAPIST FILTER PILLS ── */
+.therapist-pill {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  border: 2px solid transparent;
+  transition: all 0.15s;
+  user-select: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.therapist-pill.off { opacity: 0.35; filter: grayscale(0.4); }
+.therapist-separator {
+  width: 1px; height: 18px;
+  background: #ddd;
+  flex-shrink: 0;
+  margin: 0 2px;
+  align-self: center;
+}
+body.dark .therapist-separator { background: #2a2a4a; }
+/* ── RESIZE HANDLES ── */
 .resize-handle {
   position: absolute;
   left: 0; right: 0;
@@ -1155,14 +1232,18 @@ body.dark .agenda-event-location { color: #666; }
         <span class="btn-label">Refresh</span>
       </button>
 
+      <button class="undo-redo-btn" id="undo-btn" title="Undo (⌘Z)" disabled>↩</button>
+      <button class="undo-redo-btn" id="redo-btn" title="Redo (⌘⇧Z)" disabled>↪</button>
+      <button class="lock-btn" id="lock-btn" title="Toggle lock (prevents accidental edits)">🔓</button>
       <button class="dark-toggle-btn" id="dark-toggle-btn" title="Toggle dark mode">🌙</button>
       <button class="gear-btn" id="gear-btn" title="Settings">⚙️</button>
       <button class="signout-btn" id="signout-btn" title="Sign out"><span class="btn-label">Sign out</span><span class="btn-icon" style="display:none">⏏</span></button>
     </div>
 
-    <!-- Row 2: calendar toggles -->
+    <!-- Row 2: calendar toggles + therapist filter -->
     <div class="topbar-row2">
       <div class="cal-toggles" id="cal-toggles"></div>
+      <button class="ribbon-toggle-btn" id="ribbon-toggle-btn" title="Show/hide top bar">▲</button>
     </div>
   </div>
 
@@ -1303,11 +1384,15 @@ body.dark .agenda-event-location { color: #666; }
         <span>Dark Mode</span>
         <label class="toggle-switch"><input type="checkbox" id="settings-dark-mode"><span class="slider"></span></label>
       </div>
+      <div class="settings-row">
+        <span>Color by Therapist</span>
+        <label class="toggle-switch"><input type="checkbox" id="settings-color-therapist"><span class="slider"></span></label>
+      </div>
     </div>
 
     <div class="settings-section">
       <h3>Layout</h3>
-      <p style="font-size:11px;color:#888;line-height:1.5;margin:0">Drag the right edge of a day header to resize a column. Double-click the handle to reset just that column. Widths are saved per view (Day / 3 Days / Week).</p>
+      <p style="font-size:11px;color:#888;line-height:1.5;margin:0">Drag the right edge of a day header to resize a column. Double-click the handle to reset just that column. Widths are saved per view (Day / 3 Days / Week / By Client / One Client).</p>
       <button class="btn-cancel" id="reset-col-widths-btn" style="width:100%;margin-top:4px">Reset widths for current view</button>
     </div>
   </div>
@@ -1347,8 +1432,12 @@ let clientViewHideLabels = false;       // hide client-name labels row in By Cli
 let agendaViewEnabled = false; // gated by settings toggle
 let agendaViewMode    = false; // active when "Agenda" button is on
 let monthViewMode     = false; // active when "Month" button is on
-let columnWidths = { '1': [], '3': [], '7': [] }; // per-view day column widths (px)
-let laneWidths   = { '1': [], '3': [], '7': [] }; // per-view calendar sub-column widths (px)
+let columnWidths = { '1': [], '3': [], '7': [], 'client': [], 'single': [] }; // per-view day column widths (px)
+let laneWidths   = { '1': [], '3': [], '7': [], 'client': [], 'single': [] }; // per-view calendar sub-column widths (px)
+let gridLocked = false;          // lock mode: prevents accidental edits
+let ribbonMinimized = false;     // mobile: collapse topbar-row1
+let colorByTherapist = false;    // color events by therapist name (from "Client - Type - Therapist" titles)
+let hiddenTherapists = new Set(); // therapist names to hide in filter
 
 // ── PREFERENCES (localStorage) ───────────────────────────────────────────────
 const PREF_KEY = 'calview_prefs';
@@ -1374,6 +1463,10 @@ function savePrefs() {
     monthViewMode,
     columnWidths,
     laneWidths,
+    gridLocked,
+    ribbonMinimized,
+    colorByTherapist,
+    hiddenTherapists: [...hiddenTherapists],
   }));
 }
 function loadPrefs() {
@@ -1411,18 +1504,23 @@ function isToday(d) { return fmtDate(d) === fmtDate(startOfToday()); }
 
 // ── COLUMN WIDTH (per-view resize) ────────────────────────────────────────────
 const MIN_COL_WIDTH = 80;
+function getColWidthKey() {
+  if (singleClientMode) return 'single';
+  if (clientViewMode)   return 'client';
+  return String(viewDays);
+}
 function getColumnWidth(idx) {
-  const arr = columnWidths[String(viewDays)];
+  const arr = columnWidths[getColWidthKey()];
   return arr && arr[idx] ? arr[idx] : null;
 }
 function setColumnWidth(idx, w) {
-  const key = String(viewDays);
+  const key = getColWidthKey();
   if (!Array.isArray(columnWidths[key])) columnWidths[key] = [];
   columnWidths[key][idx] = w;
   savePrefs();
 }
 function resetColumnWidths() {
-  columnWidths[String(viewDays)] = [];
+  columnWidths[getColWidthKey()] = [];
   savePrefs();
   renderGrid();
 }
@@ -1481,7 +1579,7 @@ function addColumnResizeHandle(headerEl, idx) {
   // Double-click to reset this single column
   handle.addEventListener('dblclick', e => {
     e.preventDefault(); e.stopPropagation();
-    const arr = columnWidths[String(viewDays)];
+    const arr = columnWidths[getColWidthKey()];
     if (arr) { delete arr[idx]; savePrefs(); renderGrid(); }
   });
   headerEl.appendChild(handle);
@@ -1508,11 +1606,11 @@ function applyColumnLayout() {
 // ── LANE WIDTH (calendar sub-column resize) ───────────────────────────────────
 const MIN_LANE_WIDTH = 60;
 function getLaneWidth(idx) {
-  const arr = laneWidths[String(viewDays)];
+  const arr = laneWidths[getColWidthKey()];
   return arr && arr[idx] ? arr[idx] : null;
 }
 function setLaneWidth(idx, w) {
-  const key = String(viewDays);
+  const key = getColWidthKey();
   if (!Array.isArray(laneWidths[key])) laneWidths[key] = [];
   laneWidths[key][idx] = w;
   savePrefs();
@@ -1572,7 +1670,7 @@ function addLaneResizeHandle(labelEl, idx) {
   handle.addEventListener('touchstart', e => startResize(e.touches[0].clientX, e), { passive: false });
   handle.addEventListener('dblclick', e => {
     e.preventDefault(); e.stopPropagation();
-    const arr = laneWidths[String(viewDays)];
+    const arr = laneWidths[getColWidthKey()];
     if (arr) { delete arr[idx]; savePrefs(); renderGrid(); }
   });
   labelEl.appendChild(handle);
@@ -1859,23 +1957,45 @@ async function initApp() {
     if (prefs.agendaViewMode)    agendaViewMode    = true;
     if (prefs.columnWidths && typeof prefs.columnWidths === 'object') {
       columnWidths = {
-        '1': Array.isArray(prefs.columnWidths['1']) ? prefs.columnWidths['1'] : [],
-        '3': Array.isArray(prefs.columnWidths['3']) ? prefs.columnWidths['3'] : [],
-        '7': Array.isArray(prefs.columnWidths['7']) ? prefs.columnWidths['7'] : [],
+        '1':      Array.isArray(prefs.columnWidths['1'])      ? prefs.columnWidths['1']      : [],
+        '3':      Array.isArray(prefs.columnWidths['3'])      ? prefs.columnWidths['3']      : [],
+        '7':      Array.isArray(prefs.columnWidths['7'])      ? prefs.columnWidths['7']      : [],
+        'client': Array.isArray(prefs.columnWidths['client']) ? prefs.columnWidths['client'] : [],
+        'single': Array.isArray(prefs.columnWidths['single']) ? prefs.columnWidths['single'] : [],
       };
     }
     if (prefs.laneWidths && typeof prefs.laneWidths === 'object') {
       laneWidths = {
-        '1': Array.isArray(prefs.laneWidths['1']) ? prefs.laneWidths['1'] : [],
-        '3': Array.isArray(prefs.laneWidths['3']) ? prefs.laneWidths['3'] : [],
-        '7': Array.isArray(prefs.laneWidths['7']) ? prefs.laneWidths['7'] : [],
+        '1':      Array.isArray(prefs.laneWidths['1'])      ? prefs.laneWidths['1']      : [],
+        '3':      Array.isArray(prefs.laneWidths['3'])      ? prefs.laneWidths['3']      : [],
+        '7':      Array.isArray(prefs.laneWidths['7'])      ? prefs.laneWidths['7']      : [],
+        'client': Array.isArray(prefs.laneWidths['client']) ? prefs.laneWidths['client'] : [],
+        'single': Array.isArray(prefs.laneWidths['single']) ? prefs.laneWidths['single'] : [],
       };
     }
+    if (typeof prefs.gridLocked === 'boolean') gridLocked = prefs.gridLocked;
+    if (typeof prefs.ribbonMinimized === 'boolean') ribbonMinimized = prefs.ribbonMinimized;
+    if (typeof prefs.colorByTherapist === 'boolean') colorByTherapist = prefs.colorByTherapist;
+    if (Array.isArray(prefs.hiddenTherapists)) hiddenTherapists = new Set(prefs.hiddenTherapists);
   } else {
     enabledCalendars = new Set(allIds);
     activeCalendars  = new Set(allIds);
   }
   updateClientViewBtn();
+
+  // Apply lock state (default locked on mobile if no saved pref)
+  const isMobile = window.innerWidth <= 600;
+  if (!prefs && isMobile) gridLocked = true; // first-time mobile default
+  applyLockState();
+
+  // Apply ribbon minimize state
+  if (ribbonMinimized) {
+    const row1 = document.querySelector('.topbar-row1');
+    const btn  = document.getElementById('ribbon-toggle-btn');
+    if (row1) row1.classList.add('minimized');
+    if (btn)  btn.textContent = '▼';
+  }
+
   renderToggles();
 
   await refreshEvents();
@@ -1961,6 +2081,31 @@ function renderToggles() {
 
     container.appendChild(pill);
   });
+
+  // Therapist filter pills (when colorByTherapist is on)
+  if (colorByTherapist) {
+    const allT = getAllTherapists();
+    if (allT.length > 0) {
+      const sep = document.createElement('div');
+      sep.className = 'therapist-separator';
+      container.appendChild(sep);
+      allT.forEach(name => {
+        const color = getTherapistColor(name);
+        const tpill = document.createElement('div');
+        tpill.className = 'therapist-pill' + (hiddenTherapists.has(name) ? ' off' : '');
+        tpill.style.cssText = `background:${color}22; color:${color}; border-color:${color};`;
+        tpill.innerHTML = `<span class="dot" style="background:${color}"></span>${escHtml(name)}`;
+        tpill.addEventListener('click', () => {
+          if (hiddenTherapists.has(name)) hiddenTherapists.delete(name);
+          else hiddenTherapists.add(name);
+          savePrefs();
+          renderToggles();
+          renderGrid();
+        });
+        container.appendChild(tpill);
+      });
+    }
+  }
 }
 
 // ── RENDER ────────────────────────────────────────────────────────────────────
@@ -2299,6 +2444,7 @@ function renderGrid() {
 
       if (permissions.add) {
         lane.addEventListener('click', e => {
+          if (gridLocked) return;
           const rect = lane.getBoundingClientRect();
           const clickY = e.clientY - rect.top;
           const mins = Math.round((clickY / pxPerMin) / 15) * 15;
@@ -2311,11 +2457,19 @@ function renderGrid() {
         });
       }
 
-      const events = (cachedEvents[cal.id] || []).filter(ev => fmtDate(ev.start) === fmtDate(d));
+      const events = (cachedEvents[cal.id] || []).filter(ev => {
+        if (fmtDate(ev.start) !== fmtDate(d)) return false;
+        if (colorByTherapist && hiddenTherapists.size > 0) {
+          const t = getTherapistName(ev.title);
+          if (t && hiddenTherapists.has(t)) return false;
+        }
+        return true;
+      });
       const laid = layoutEvents(events);
-      const color = cal.backgroundColor || '#4285f4';
+      const calColor = cal.backgroundColor || '#4285f4';
 
       laid.forEach(({ ev, col, numCols }) => {
+        const color = getEventColor(ev, calColor);
         const startMins = (ev.start.getHours() - START_HOUR) * 60 + ev.start.getMinutes();
         const endMins   = (ev.end.getHours()   - START_HOUR) * 60 + ev.end.getMinutes();
         const top    = Math.max(0, startMins * pxPerMin);
@@ -2637,7 +2791,7 @@ function renderClientGrid() {
       laid.forEach(({ ev, col: laneCol, numCols }) => {
         const { calId } = sharedEvs.find(x => x.ev === ev) || {};
         const cal   = calendarList.find(c => c.id === (calId || ev.calId));
-        const color = cal?.backgroundColor || '#4285f4';
+        const color = getEventColor(ev, cal?.backgroundColor || '#4285f4');
         const startMins = (ev.start.getHours() - START_HOUR) * 60 + ev.start.getMinutes();
         const endMins   = (ev.end.getHours()   - START_HOUR) * 60 + ev.end.getMinutes();
         const top    = Math.max(0, startMins * pxPerMin);
@@ -2688,7 +2842,7 @@ function renderClientGrid() {
 
       laid.forEach(({ ev, col: laneCol, numCols }) => {
         const calEntry = calendarList.find(c => c.id === ev.calId);
-        const color    = calEntry?.backgroundColor || '#4285f4';
+        const color    = getEventColor(ev, calEntry?.backgroundColor || '#4285f4');
         const startMins = (ev.start.getHours() - START_HOUR) * 60 + ev.start.getMinutes();
         const endMins   = (ev.end.getHours()   - START_HOUR) * 60 + ev.end.getMinutes();
         const top    = Math.max(0, startMins * pxPerMin);
@@ -2967,7 +3121,7 @@ function renderSingleClientGrid() {
     laid.forEach(({ ev, col: laneCol, numCols }) => {
       const { calId } = clientEvs.find(x => x.ev === ev) || {};
       const calEntry  = calendarList.find(c => c.id === (calId || ev.calId));
-      const color     = calEntry?.backgroundColor || '#4285f4';
+      const color     = getEventColor(ev, calEntry?.backgroundColor || '#4285f4');
 
       const startMins = (ev.start.getHours() - START_HOUR) * 60 + ev.start.getMinutes();
       const endMins   = (ev.end.getHours()   - START_HOUR) * 60 + ev.end.getMinutes();
@@ -3164,6 +3318,7 @@ function updateDescLine(desc, prefix, value) {
 }
 
 function handleEventClick(ev) {
+  if (gridLocked) { showToast('🔒 Locked — unlock to edit'); return; }
   hideTooltip();
   if (permissions.clone) { openCloneModal(ev); }
   else if (permissions.edit) { openEditModal(ev); }
@@ -3460,14 +3615,19 @@ async function deleteModal() {
   deleteBtn.disabled = true;
   deleteBtn.textContent = 'Deleting…';
 
+  // Snapshot for undo
+  const evSnapshot = { ...modalEventRef, start: new Date(modalEventRef.start), end: new Date(modalEventRef.end) };
+
   try {
     await apiWrite('DELETE',
       `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(modalEventRef.calId)}/events/${encodeURIComponent(modalEventRef.id)}`
     );
     const arr = cachedEvents[modalEventRef.calId] || [];
     cachedEvents[modalEventRef.calId] = arr.filter(e => e.id !== modalEventRef.id);
+    pushUndo({ type: 'delete', ev: evSnapshot });
     closeModal();
     renderGrid();
+    showToast('Deleted — ⌘Z to undo');
   } catch (e) {
     alert('Delete failed: ' + e.message);
   } finally {
@@ -3513,6 +3673,7 @@ function openSettings() {
 
   // Appearance
   document.getElementById('settings-dark-mode').checked = document.body.classList.contains('dark');
+  document.getElementById('settings-color-therapist').checked = colorByTherapist;
 
   // Populate client view toggles
   document.getElementById('client-view-enabled-chk').checked   = clientViewEnabled;
@@ -3577,6 +3738,7 @@ function pushUndo(entry) {
   undoStack.push(entry);
   if (undoStack.length > MAX_HISTORY) undoStack.shift();
   redoStack.length = 0; // clear redo on new action
+  updateUndoButtons();
 }
 
 let toastTimer = null;
@@ -3588,6 +3750,52 @@ function showToast(msg) {
   toastTimer = setTimeout(() => t.classList.remove('visible'), 1800);
 }
 
+// ── LOCK ─────────────────────────────────────────────────────────────────────
+function applyLockState() {
+  const btn = document.getElementById('lock-btn');
+  if (!btn) return;
+  btn.textContent = gridLocked ? '🔒' : '🔓';
+  btn.classList.toggle('locked', gridLocked);
+  btn.title = gridLocked ? 'Locked — click to unlock editing' : 'Unlocked — click to lock';
+}
+
+// ── UNDO/REDO BUTTON STATE ────────────────────────────────────────────────────
+function updateUndoButtons() {
+  const ub = document.getElementById('undo-btn');
+  const rb = document.getElementById('redo-btn');
+  if (ub) ub.disabled = undoStack.length === 0;
+  if (rb) rb.disabled = redoStack.length === 0;
+}
+
+// ── THERAPIST COLORS ──────────────────────────────────────────────────────────
+const THERAPIST_COLORS = [
+  '#e91e63','#9c27b0','#3f51b5','#00897b','#f4511e',
+  '#00bcd4','#8bc34a','#ff9800','#795548','#607d8b',
+];
+function getTherapistName(evTitle) {
+  const parts = evTitle.split(' - ');
+  return parts.length >= 3 ? parts[parts.length - 1].trim() : null;
+}
+function getAllTherapists() {
+  const seen = new Set();
+  const ordered = [];
+  Object.values(cachedEvents).flat().forEach(ev => {
+    const t = getTherapistName(ev.title);
+    if (t && !seen.has(t)) { seen.add(t); ordered.push(t); }
+  });
+  return ordered;
+}
+function getTherapistColor(name) {
+  const all = getAllTherapists();
+  const idx = all.indexOf(name);
+  return idx === -1 ? THERAPIST_COLORS[0] : THERAPIST_COLORS[idx % THERAPIST_COLORS.length];
+}
+function getEventColor(ev, calColor) {
+  if (!colorByTherapist) return calColor;
+  const t = getTherapistName(ev.title);
+  return t ? getTherapistColor(t) : calColor;
+}
+
 function toOffsetISO(d) {
   const off = -d.getTimezoneOffset();
   const sign = off >= 0 ? '+' : '-';
@@ -3597,6 +3805,43 @@ function toOffsetISO(d) {
 
 async function applyHistoryEntry(entry, direction) {
   // direction: 'undo' reverts, 'redo' re-applies
+  if (entry.type === 'delete') {
+    if (direction === 'undo') {
+      // Re-create the deleted event
+      try {
+        const ev = entry.ev;
+        const body = {
+          summary: ev.title, description: ev.desc || '', location: ev.location || '',
+          start: { dateTime: toOffsetISO(new Date(ev.start)) },
+          end:   { dateTime: toOffsetISO(new Date(ev.end)) },
+        };
+        if (ev.isTentative) body.status = 'tentative';
+        const created = await apiWrite('POST',
+          `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(ev.calId)}/events?sendUpdates=none`, body);
+        const cs = created.start?.dateTime || created.start?.date;
+        const ce = created.end?.dateTime   || created.end?.date;
+        const newEvObj = { id: created.id, calId: ev.calId, title: created.summary || ev.title,
+          start: new Date(cs), end: new Date(ce), desc: ev.desc || '', location: ev.location || '',
+          isTentative: ev.isTentative || false, meetLink: ev.meetLink || '' };
+        if (!cachedEvents[ev.calId]) cachedEvents[ev.calId] = [];
+        cachedEvents[ev.calId].push(newEvObj);
+        entry.recreatedId = created.id; // track for redo
+        renderGrid();
+        showToast('Delete undone — event recreated');
+      } catch(err) { alert('Undo delete failed: ' + err.message); }
+    } else {
+      // Re-delete the recreated event
+      const idToDelete = entry.recreatedId || entry.ev.id;
+      try {
+        await apiWrite('DELETE',
+          `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(entry.ev.calId)}/events/${encodeURIComponent(idToDelete)}?sendUpdates=none`);
+        cachedEvents[entry.ev.calId] = (cachedEvents[entry.ev.calId] || []).filter(e => e.id !== idToDelete);
+        renderGrid();
+        showToast('Delete redone');
+      } catch(err) { alert('Redo delete failed: ' + err.message); }
+    }
+    return;
+  }
   if (entry.type === 'clone') {
     if (direction === 'undo') {
       // Delete the cloned event
@@ -3676,6 +3921,7 @@ function attachEventInteraction(evEl, ev, cal, laneEl, d, pxPerMin) {
 
   if (permissions.move) {
     evEl.addEventListener('mousedown', e => {
+      if (gridLocked) return;
       if (e.target.classList.contains('resize-handle')) return;
       e.preventDefault(); e.stopPropagation();
       hideTooltip();
@@ -3683,6 +3929,7 @@ function attachEventInteraction(evEl, ev, cal, laneEl, d, pxPerMin) {
       startDrag('move', e.clientX, e.clientY, ev, cal, color, laneEl, d, pxPerMin, evEl, isClone);
     });
     evEl.addEventListener('touchstart', e => {
+      if (gridLocked) return;
       if (e.target.classList.contains('resize-handle')) return;
       const touch = e.touches[0];
       const holdTimer = setTimeout(() => {
@@ -3708,18 +3955,22 @@ function attachEventInteraction(evEl, ev, cal, laneEl, d, pxPerMin) {
     evEl.appendChild(botHandle);
 
     topHandle.addEventListener('mousedown', e => {
+      if (gridLocked) return;
       e.preventDefault(); e.stopPropagation();
       startDrag('resize-top', e.clientX, e.clientY, ev, cal, color, laneEl, d, pxPerMin, evEl, false);
     });
     botHandle.addEventListener('mousedown', e => {
+      if (gridLocked) return;
       e.preventDefault(); e.stopPropagation();
       startDrag('resize-bottom', e.clientX, e.clientY, ev, cal, color, laneEl, d, pxPerMin, evEl, false);
     });
     topHandle.addEventListener('touchstart', e => {
+      if (gridLocked) return;
       e.preventDefault(); e.stopPropagation();
       startDrag('resize-top', e.touches[0].clientX, e.touches[0].clientY, ev, cal, color, laneEl, d, pxPerMin, evEl, false);
     }, { passive: false });
     botHandle.addEventListener('touchstart', e => {
+      if (gridLocked) return;
       e.preventDefault(); e.stopPropagation();
       startDrag('resize-bottom', e.touches[0].clientX, e.touches[0].clientY, ev, cal, color, laneEl, d, pxPerMin, evEl, false);
     }, { passive: false });
@@ -3855,6 +4106,23 @@ async function handleDragEnd(clientX, clientY) {
   const noLaneChange   = !currentCalId || currentCalId === ev.calId;
   if (noTimeChange && noDateChange && (type !== 'move' || noLaneChange)) return;
 
+  // ── SUSPICIOUS ACTION CHECK ───────────────────────────────────────────────
+  const newDurMins  = newEndMins - newStartMins;
+  const origDurMins = origEndMins - origStartMins;
+  const newHour = START_HOUR + Math.floor(newStartMins / 60);
+  const suspicions = [];
+  if (newHour < 8) suspicions.push(`⏰ Very early start time: ${minsToTimeStr(newStartMins)}`);
+  if (newDurMins > 120 && newDurMins > origDurMins * 1.5)
+    suspicions.push(`📏 Duration became ${Math.round(newDurMins / 60 * 10) / 10}h (was ${Math.round(origDurMins / 60 * 10) / 10}h)`);
+  if (suspicions.length > 0) {
+    const msg = `⚠️ Suspicious change detected:\n${suspicions.join('\n')}\n\nProceed?`;
+    if (!confirm(msg)) {
+      evEl.classList.remove('dragging-event');
+      renderGrid();
+      return;
+    }
+  }
+
   const targetCalId = (type === 'move' && currentCalId) ? currentCalId : ev.calId;
   const targetCal   = calendarList.find(c => c.id === targetCalId) || cal;
 
@@ -3989,6 +4257,7 @@ document.addEventListener('keydown', e => {
     const entry = undoStack.pop();
     redoStack.push(entry);
     if (redoStack.length > MAX_HISTORY) redoStack.shift();
+    updateUndoButtons();
     applyHistoryEntry(entry, 'undo');
   }
   if (mod && e.key === 'z' && e.shiftKey) {
@@ -3997,17 +4266,62 @@ document.addEventListener('keydown', e => {
     const entry = redoStack.pop();
     undoStack.push(entry);
     if (undoStack.length > MAX_HISTORY) undoStack.shift();
+    updateUndoButtons();
     applyHistoryEntry(entry, 'redo');
   }
 });
+
+// ── LOCK BUTTON ───────────────────────────────────────────────────────────────
+document.getElementById('lock-btn').addEventListener('click', () => {
+  gridLocked = !gridLocked;
+  applyLockState();
+  savePrefs();
+  showToast(gridLocked ? 'Locked — editing disabled' : 'Unlocked — editing enabled');
+});
+
+// ── UNDO / REDO BUTTONS ───────────────────────────────────────────────────────
+document.getElementById('undo-btn').addEventListener('click', () => {
+  if (undoStack.length === 0) { showToast('Nothing to undo'); return; }
+  const entry = undoStack.pop();
+  redoStack.push(entry);
+  if (redoStack.length > MAX_HISTORY) redoStack.shift();
+  updateUndoButtons();
+  applyHistoryEntry(entry, 'undo');
+});
+document.getElementById('redo-btn').addEventListener('click', () => {
+  if (redoStack.length === 0) { showToast('Nothing to redo'); return; }
+  const entry = redoStack.pop();
+  undoStack.push(entry);
+  if (undoStack.length > MAX_HISTORY) undoStack.shift();
+  updateUndoButtons();
+  applyHistoryEntry(entry, 'redo');
+});
+
+// ── RIBBON MINIMIZE ───────────────────────────────────────────────────────────
+document.getElementById('ribbon-toggle-btn').addEventListener('click', () => {
+  ribbonMinimized = !ribbonMinimized;
+  const row1 = document.querySelector('.topbar-row1');
+  const btn  = document.getElementById('ribbon-toggle-btn');
+  row1.classList.toggle('minimized', ribbonMinimized);
+  btn.textContent = ribbonMinimized ? '▼' : '▲';
+  savePrefs();
+});
+
+// ── COLOR BY THERAPIST ────────────────────────────────────────────────────────
+document.getElementById('settings-color-therapist').addEventListener('change', e => {
+  colorByTherapist = e.target.checked;
+  savePrefs();
+  renderToggles();
+  renderGrid();
+});
+
 document.getElementById('gear-btn').addEventListener('click', openSettings);
 document.getElementById('settings-backdrop').addEventListener('click', e => { if (e.target === e.currentTarget) closeSettings(); });
 document.getElementById('reset-col-widths-btn').addEventListener('click', () => {
   resetColumnWidths();
-  // Update the button label to reflect current view
-  const labels = { '1': 'Day', '3': '3 Days', '7': 'Week' };
+  const labels = { '1': 'Day', '3': '3 Days', '7': 'Week', 'client': 'By Client', 'single': 'One Client' };
   const btn = document.getElementById('reset-col-widths-btn');
-  btn.textContent = `Reset widths for current view (${labels[String(viewDays)] || ''})`;
+  btn.textContent = `Reset widths for current view (${labels[getColWidthKey()] || ''})`;
   setTimeout(() => { btn.textContent = 'Reset widths for current view'; }, 1200);
 });
 document.getElementById('signin-btn').addEventListener('click', startLogin);
@@ -4116,10 +4430,21 @@ setInterval(() => {
 
 // ── BOOT ──────────────────────────────────────────────────────────────────────
 (async () => {
-  // Restore dark mode and view before anything renders
+  // Restore dark mode, view, lock, and ribbon state before anything renders
   const prefs = loadPrefs();
   if (prefs) {
     if (prefs.darkMode) applyDarkPref(true);
+    if (typeof prefs.gridLocked === 'boolean') {
+      gridLocked = prefs.gridLocked;
+      applyLockState();
+    }
+    if (typeof prefs.ribbonMinimized === 'boolean' && prefs.ribbonMinimized) {
+      ribbonMinimized = true;
+      const row1 = document.querySelector('.topbar-row1');
+      const btn  = document.getElementById('ribbon-toggle-btn');
+      if (row1) row1.classList.add('minimized');
+      if (btn)  btn.textContent = '▼';
+    }
     if (prefs.monthViewMode) {
       monthViewMode = true;
       document.querySelectorAll('.view-btn').forEach(b => {
