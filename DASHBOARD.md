@@ -1,6 +1,6 @@
 # Capybara Care — Revenue Dashboard
 
-A single-page HTML dashboard that pulls session and payment data from two Google Sheets tabs and presents it across four views: Home, Monthly Trend, Therapist, and Customers.
+A single-page HTML dashboard that pulls session and payment data from two Google Sheets tabs and presents it across five views: Home, Monthly Trend, Therapist, Customers, and Insights.
 
 ---
 
@@ -24,14 +24,14 @@ Both sheets must be publicly shared (Anyone with the link → Viewer). On load t
 ### Filters bar
 Four dropdowns that apply across every tab simultaneously:
 
-| Filter | Field |
-|---|---|
-| Year | `Year` column |
-| Month | `Month` column |
-| Therapist | `Therapist` column |
-| Customer | `Customer Name` column |
+| Filter | Field | Affects Insights tab? |
+|---|---|---|
+| Year | `Year` column | Yes |
+| Month | `Month` column | No — Insights always uses full history |
+| Therapist | `Therapist` column | No |
+| Customer | `Customer Name` column | No |
 
-On initial load the dashboard auto-selects the current calendar month and year. Changing any dropdown immediately re-renders all tabs and charts.
+On initial load the dashboard auto-selects the current calendar month and year. Changing any dropdown immediately re-renders all tabs and charts. The Insights tab respects only the Year filter so that historical context is always meaningful.
 
 ### Refresh button
 Re-fetches both sheets from scratch and resets the last-updated timestamp shown in the header.
@@ -155,6 +155,122 @@ All customers (not just top 15) in a sortable, searchable table.
 
 ---
 
+### 5. Insights
+
+An automated analysis engine that scans all historical data and surfaces actionable findings ranked by urgency. Insights always use the full raw dataset (year-filtered only) so results are never skewed by month or therapist filters.
+
+#### Header
+Shows total insight count ("N insights as of today") and a "Last checked: HH:MM" timestamp. Re-runs every time data is refreshed or the year filter changes.
+
+#### Insight Cards
+Each card has a coloured left border and badge based on priority:
+
+| Priority | Colour | Meaning |
+|---|---|---|
+| 1 — URGENT | Red | Needs action today |
+| 2 — WATCH | Amber | Review this week |
+| 3 — POSITIVE | Green | Good news / momentum |
+| 4 — INFO | Grey | Context and trends |
+
+Card anatomy:
+- **Category badge** (URGENT / WATCH / POSITIVE / INFO)
+- **`(i) rule_id` tooltip** — shows which rule generated the card (for debugging)
+- **Title** — short headline with specific names and amounts
+- **Detail** — one or two sentences answering "so what should I do?"
+- **Metric** — optional large number (e.g. ₹8.1K, 14 days)
+- **Action button** — optional CTA (e.g. "Message Sarvag →")
+
+Cards are sorted priority 1 → 4, capped at `maxInsightsToShow` (default 12).
+
+If no rules fire: shows "All clear — no issues detected today 🎉".
+
+#### Insights Engine
+
+Implemented as a flat `INSIGHT_RULES` array. Each rule is an independent object — enable/disable by flipping `enabled: true/false` without touching any other code.
+
+**`INSIGHT_CONFIG`** — a single config object at the top of the engine holds every tunable threshold:
+
+| Key | Default | Purpose |
+|---|---|---|
+| `outstandingUrgentThreshold` | 5000 | ₹ owed before high-balance alert |
+| `advanceWarningThreshold` | 2000 | ₹ advance remaining before warning |
+| `dropoutGapDays` | 10 | Days of no sessions → dropout watch |
+| `dropoutUrgentDays` | 14 | Days of no sessions → urgent |
+| `newClientDays` | 45 | Days since first session = "new client" |
+| `newClientMinSessions` | 4 | Sessions below this = low engagement |
+| `revenueDropPercent` | 30 | Week-over-week drop threshold (%) |
+| `revenueRisePercent` | 20 | Week-over-week rise threshold (%) |
+| `concentrationRiskPercent` | 40 | Top-3 clients revenue share before risk flag |
+| `therapistDropPercent` | 30 | Projected sessions drop vs monthly avg |
+| `highLifetimeValue` | 50000 | ₹ lifetime billing milestone |
+| `unusualSessionMultiple` | 3 | Nx avg rate = unusual session value |
+| `dataFreshnessDays` | 2 | Days since last row before stale warning |
+| `returningClientGapDays` | 21 | Gap (days) that counts as a "return" |
+| `maxInsightsToShow` | 12 | Cap on total rendered cards |
+| `weeksOfHistoryForAverage` | 8 | Weeks of data used for rolling averages |
+| `largePaymentThreshold` | 8000 | ₹ You Got entry = "large payment" |
+| `loyalClientMonths` | 4 | Months span required for loyal-client badge |
+| `loyalClientMaxGapDays` | 21 | Max gap allowed in loyal-client check |
+
+#### Rules Reference
+
+**Group 1 — Outstanding & Payments**
+
+| Rule ID | Priority | Condition |
+|---|---|---|
+| `high_outstanding_balance` | URGENT | Any client owes > ₹5,000 |
+| `advance_expiring_soon` | URGENT | Client advance < ₹2,000 remaining |
+| `multiple_outstanding_clients` | WATCH | More than 3 clients owe money this month |
+| `large_single_payment_received` | POSITIVE | Single `You Got` entry > ₹8,000 in last 7 days |
+
+**Group 2 — Session Frequency & Dropout Risk**
+
+| Rule ID | Priority | Condition |
+|---|---|---|
+| `client_missing_expected_sessions` | WATCH | Active client's last-2-week sessions < 50% of their weekly average |
+| `client_no_show_streak` | URGENT / WATCH | 0 sessions in last 10 days but had sessions in the 10 days before |
+| `new_client_low_engagement` | WATCH | First session in last 45 days and fewer than 4 total sessions |
+| `multiple_dropout_risks` | WATCH | More than 2 clients simultaneously flagged as dropout risk |
+
+**Group 3 — Revenue Pace & Trends**
+
+| Rule ID | Priority | Condition |
+|---|---|---|
+| `monthly_revenue_pace` | INFO / POSITIVE / WATCH | Always fires; priority adjusts based on % vs last month |
+| `best_revenue_day_pattern` | INFO | A day of week averages 30%+ more than overall daily average |
+| `revenue_concentration_risk` | WATCH | Top 3 clients > 40% of last-30-day revenue |
+| `week_over_week_drop` | WATCH | This week's revenue < 70% of last week |
+| `strong_week` | POSITIVE | This week's revenue > 120% of last week |
+
+**Group 4 — Therapist Insights**
+
+| Rule ID | Priority | Condition |
+|---|---|---|
+| `therapist_utilization_drop` | WATCH | Therapist's projected monthly sessions < 70% of their 3-month average |
+| `top_performing_therapist` | POSITIVE | Always fires (when ≥ 2 therapists); highlights highest net-profit contributor |
+| `therapist_payout_due` | INFO | Always fires; summarises each therapist's share owed this month |
+
+**Group 5 — Client Milestones & Positives**
+
+| Rule ID | Priority | Condition |
+|---|---|---|
+| `long_term_loyal_client` | POSITIVE | Sessions spanning > 4 months with no gap > 21 days |
+| `high_lifetime_value_client` | POSITIVE | Client total billing > ₹50,000 |
+| `client_returning_after_gap` | POSITIVE | Client returns within last 7 days after a gap > 21 days |
+
+**Group 6 — Operational Flags**
+
+| Rule ID | Priority | Condition |
+|---|---|---|
+| `sessions_without_payment_logged` | WATCH | Session rows older than 7 days with no payment on the same date |
+| `data_freshness_check` | URGENT | Most recent row in the sheet is older than 2 days |
+| `unusually_high_single_session` | WATCH | Session value > 3× that client's average in last 14 days |
+
+#### All Rules Debug Section
+A collapsed section at the bottom of the tab lists every rule ID, its category badge, and enabled/disabled status. Expand it to audit the engine without opening source code.
+
+---
+
 ## Charts Summary
 
 | Chart | Type | Tab |
@@ -163,6 +279,8 @@ All customers (not just top 15) in a sortable, searchable table.
 | Revenue by Therapist | Grouped stacked bar | Therapist |
 | Monthly Sessions by Therapist | Multi-line | Therapist |
 | Top Customers — Revenue & Sessions | Bar + line | Customers |
+
+The Insights tab contains no charts — it is text-card based only.
 
 All charts use [Chart.js 4.4.3](https://www.chartjs.org/), are fully responsive, and are destroyed and rebuilt on every filter change to avoid stale data.
 
