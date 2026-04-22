@@ -12,11 +12,19 @@ Edit `dashboard_src.html` (unencrypted source — gitignored). Then encrypt and 
 npx staticrypt dashboard_src.html -p YOUR_PASSWORD --short && cp encrypted/dashboard_src.html dashboard.html
 ```
 
-- `dashboard_src.html` → source file to edit
+- `dashboard_src.html` → source file to edit (unencrypted, gitignored)
 - `encrypted/dashboard_src.html` → staticrypt output (intermediate, don't use directly)
 - `dashboard.html` → the file that is actually served / committed
 
-The `-o` flag does **not** exist in this version of staticrypt — always use `-d` (directory) and copy manually.
+**Important:** Never use `-d .` — that outputs to the current directory and **overwrites `dashboard_src.html`** with the encrypted version, destroying the source.
+
+The `-o` flag does **not** exist in this version of staticrypt — always use the default `-d` (outputs to `encrypted/`) and copy manually.
+
+**To recover the source if it gets overwritten:**
+```bash
+npx staticrypt --decrypt dashboard_src.html -p YOUR_PASSWORD -d decrypted
+cp decrypted/dashboard_src.html dashboard_src.html
+```
 
 ---
 
