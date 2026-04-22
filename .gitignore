@@ -1,5 +1,8 @@
 # Unencrypted dashboard source — edit this locally, encrypt before committing
 dashboard_src.html
 
+# Local secrets — never commit
+.env.local
+
 # macOS
 .DS_Store

@@ -4,6 +4,22 @@ A single-page HTML dashboard that pulls session and payment data from two Google
 
 ---
 
+## Building / Publishing
+
+Edit `dashboard_src.html` (unencrypted source — gitignored). Then encrypt and publish:
+
+```bash
+npx staticrypt dashboard_src.html -p YOUR_PASSWORD --short && cp encrypted/dashboard_src.html dashboard.html
+```
+
+- `dashboard_src.html` → source file to edit
+- `encrypted/dashboard_src.html` → staticrypt output (intermediate, don't use directly)
+- `dashboard.html` → the file that is actually served / committed
+
+The `-o` flag does **not** exist in this version of staticrypt — always use `-d` (directory) and copy manually.
+
+---
+
 ## Data Source
 
 Data is fetched via the Google Visualization JSONP API from a single Google Spreadsheet split across two sheets:
