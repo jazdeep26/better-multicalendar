@@ -3386,7 +3386,7 @@ function openCloneModal(ev) {
   document.getElementById('clone-evt-label').textContent = ev.title;
   document.getElementById('clone-evt-date-hint').textContent =
     `Current date: ${toDDMMYYYY(ev.start)}`;
-  document.getElementById('clone-new-date').value = '';
+  document.getElementById('clone-new-date').value = fmtDate(ev.start);
   document.getElementById('clone-backdrop').classList.add('open');
 }
 
