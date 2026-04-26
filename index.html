@@ -3310,7 +3310,8 @@ function buildReminderMessage(clickedEv, dayDate, allDayEvents) {
     const ampm = h >= 12 ? 'PM' : 'AM';
     const h12  = pad(h % 12 || 12);
     const { therapyType } = parseEventTitle(ev.title);
-    return `${h12}:${m} ${ampm} - ${therapyType}`;
+    const link = ev.meetLink ? ` ${ev.meetLink}` : '';
+    return `${h12}:${m} ${ampm} - ${therapyType}${link}`;
   }).join('\n');
 
   return `Hi! ${childName}'s sessions ${whenWord}:\n\n${lines}\n\nSee you!`;
