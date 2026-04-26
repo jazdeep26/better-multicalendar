@@ -1879,9 +1879,11 @@ async function fetchEvents(calId, timeMin, timeMax) {
       const rawDesc = ev.description || '';
       const isTentative = /^Tentative$/im.test(rawDesc);
       const cleanDesc = rawDesc.replace(/^Tentative\r?\n?/im, '').trim();
-      // Prefer the dedicated hangoutLink field (Google Meet), then scan description for Teams/Meet URLs
+      // Prefer hangoutLink, then scan description, then scan location for meet/teams/zoom URLs
+      const MEET_RE = /https:\/\/(?:meet\.google\.com|teams\.microsoft\.com|teams\.live\.com|zoom\.us\/j|us\d+\.zoom\.us\/j)[^\s"<]*/i;
       const meetLink = ev.hangoutLink ||
-        (rawDesc.match(/https:\/\/(?:meet\.google\.com|teams\.microsoft\.com|teams\.live\.com|zoom\.us\/j|us\d+\.zoom\.us\/j)[^\s"<]*/i) || [])[0] ||
+        (rawDesc.match(MEET_RE) || [])[0] ||
+        ((ev.location || '').match(MEET_RE) || [])[0] ||
         '';
       events.push({
         id:          ev.id,
