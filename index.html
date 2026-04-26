@@ -186,6 +186,7 @@ body.dark .topbar-row2 { border-top-color: #2a2a3a; }
 .refresh-btn:hover { background: #e8f0fe; }
 .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .refresh-btn .spin { animation: spin 0.8s linear infinite; display: inline-block; }
+#nav-loading-indicator { animation: spin 0.8s linear infinite; display: inline-block; }
 
 .signout-btn { color: #888; border-color: #e0e0e0; font-size: 12px; }
 
@@ -1233,6 +1234,7 @@ body.dark .agenda-event-location { color: #666; }
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
         <span class="btn-label">Refresh</span>
       </button>
+      <span id="nav-loading-indicator" title="Loading events…" style="display:none;font-size:16px;opacity:0.6;line-height:1">↻</span>
 
       <button class="undo-redo-btn" id="undo-btn" title="Undo (⌘Z)" disabled>↩</button>
       <button class="undo-redo-btn" id="redo-btn" title="Redo (⌘⇧Z)" disabled>↪</button>
@@ -1937,11 +1939,22 @@ function viewNeedsFetch() {
   return viewStart < fetchedRangeMin || viewEnd > fetchedRangeMax;
 }
 
-async function navigateAndRender() {
-  if (viewNeedsFetch()) {
-    try { await loadAllEvents(); } catch (e) { if (e.message !== 'token_expired') console.warn(e); }
-  }
+let navFetchTimer = null;
+
+function navigateAndRender() {
+  // Render immediately so the date/grid updates without waiting for data
   renderGrid();
+
+  // Debounce the fetch: only load after 400 ms of no further nav clicks
+  if (!viewNeedsFetch()) return;
+  clearTimeout(navFetchTimer);
+  const navIndicator = document.getElementById('nav-loading-indicator');
+  navIndicator.style.display = 'inline-block';
+  navFetchTimer = setTimeout(async () => {
+    try { await loadAllEvents(); } catch (e) { if (e.message !== 'token_expired') console.warn(e); }
+    navIndicator.style.display = 'none';
+    renderGrid();
+  }, 400);
 }
 
 // ── APP INIT ──────────────────────────────────────────────────────────────────
