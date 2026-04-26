@@ -3880,8 +3880,8 @@ function reconcileVisible(ev) {
   if (!ndMatch) return true; // no ND line: show
   const ndVal = ndMatch[1].trim();
   if (!ndVal) return true; // ND: blank: show
-  if (ndVal.toUpperCase() === 'NA') return false; // ND: NA: hide
-  if (/^\d{2}\.\d{2}\.\d{4}$/.test(ndVal)) return false; // ND: valid date (DD.MM.YYYY): hide
+  if (/^NA\b/i.test(ndVal)) return false; // ND: starts with NA (e.g. "NA. Dismissed"): hide
+  if (/^\d{2}\.\d{2}\.\d{4}/.test(ndVal)) return false; // ND: starts with DD.MM.YYYY (e.g. "22.05.2025 @2:30"): hide
   return true; // ND: has other value: show
 }
 // Returns set of therapist names that have at least one event in the current view range
