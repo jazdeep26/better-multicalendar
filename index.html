@@ -1375,8 +1375,12 @@ body.dark .agenda-event-location { color: #666; }
         <label class="toggle-switch"><input type="checkbox" id="perm-delete"><span class="slider"></span></label>
       </div>
       <div class="settings-row" style="margin-top:6px;border-top:1px solid #e0e0e0;padding-top:8px">
-        <span>Allow Clone</span>
+        <span>Diary Mode</span>
         <label class="toggle-switch"><input type="checkbox" id="perm-clone"><span class="slider"></span></label>
+      </div>
+      <div class="settings-row" id="reconcile-row" style="display:none;margin-top:4px;padding-left:12px">
+        <span>Reconcile</span>
+        <label class="toggle-switch"><input type="checkbox" id="diary-reconcile-chk"><span class="slider"></span></label>
       </div>
     </div>
 
@@ -1422,6 +1426,7 @@ let cachedEvents = {};           // calId -> [event, ...]
 let viewDays     = 3;
 let anchorDate   = startOfToday();
 let permissions  = { add: false, edit: false, move: false, delete: false, clone: false };
+let diaryReconcile = true;
 let clientViewEnabled = false; // gated by settings toggle
 let clientViewMode    = false; // active client view toggle
 let activeClients     = new Set(); // client names visible in client view
@@ -1469,6 +1474,7 @@ function savePrefs() {
     ribbonMinimized,
     colorByTherapist,
     hiddenTherapists: [...hiddenTherapists],
+    diaryReconcile,
   }));
 }
 function loadPrefs() {
@@ -1979,6 +1985,7 @@ async function initApp() {
     if (typeof prefs.ribbonMinimized === 'boolean') ribbonMinimized = prefs.ribbonMinimized;
     if (typeof prefs.colorByTherapist === 'boolean') colorByTherapist = prefs.colorByTherapist;
     if (Array.isArray(prefs.hiddenTherapists)) hiddenTherapists = new Set(prefs.hiddenTherapists);
+    if (typeof prefs.diaryReconcile === 'boolean') diaryReconcile = prefs.diaryReconcile;
   } else {
     enabledCalendars = new Set(allIds);
     activeCalendars  = new Set(allIds);
@@ -2175,6 +2182,7 @@ function renderAgendaView() {
     .filter(cal => activeCalendars.has(cal.id))
     .forEach(cal => {
       (cachedEvents[cal.id] || []).forEach(ev => {
+        if (!reconcileVisible(ev)) return;
         const ds = fmtDate(ev.start);
         if (byDate.has(ds)) byDate.get(ds).push({ ev, cal });
       });
@@ -2297,6 +2305,7 @@ function renderMonthView() {
   const evsByDate = new Map();
   activeCals.forEach(cal => {
     (cachedEvents[cal.id] || []).forEach(ev => {
+      if (!reconcileVisible(ev)) return;
       const ds = fmtDate(ev.start);
       if (!evsByDate.has(ds)) evsByDate.set(ds, []);
       evsByDate.get(ds).push({ ev, cal });
@@ -2469,6 +2478,7 @@ function renderGrid() {
 
       const events = (cachedEvents[cal.id] || []).filter(ev => {
         if (fmtDate(ev.start) !== fmtDate(d)) return false;
+        if (!reconcileVisible(ev)) return false;
         return therapistVisible(ev);
       });
       const laid = layoutEvents(events);
@@ -2697,7 +2707,7 @@ function renderClientGrid() {
   const clientsByDay = new Map();
   days.forEach(d => {
     const dateStr = fmtDate(d);
-    const dayEvs = Object.values(cachedEvents).flat().filter(ev => fmtDate(ev.start) === dateStr);
+    const dayEvs = Object.values(cachedEvents).flat().filter(ev => fmtDate(ev.start) === dateStr && reconcileVisible(ev));
     clientsByDay.set(dateStr, visibleClients.filter(name =>
       dayEvs.some(ev => !cvIsShared(ev) && cvGetClientName(ev) === name)
     ));
@@ -3103,7 +3113,7 @@ function renderSingleClientGrid() {
 
     // Collect all events for this day
     const allDayEvs = Object.entries(cachedEvents).flatMap(([calId, evs]) =>
-      evs.filter(ev => fmtDate(ev.start) === dateStr).map(ev => ({ ev, calId }))
+      evs.filter(ev => fmtDate(ev.start) === dateStr && reconcileVisible(ev)).map(ev => ({ ev, calId }))
     );
 
     // Filter to this client's events that pass the session type filter
@@ -3696,6 +3706,9 @@ function openSettings() {
   ['add','edit','move','delete'].forEach(p => {
     document.getElementById('perm-' + p).disabled = permissions.clone;
   });
+  // Show/populate Reconcile row
+  document.getElementById('reconcile-row').style.display = permissions.clone ? '' : 'none';
+  document.getElementById('diary-reconcile-chk').checked = diaryReconcile;
 
   document.getElementById('settings-backdrop').classList.add('open');
 }
@@ -3721,13 +3734,24 @@ document.getElementById('perm-clone').addEventListener('change', e => {
       const el = document.getElementById('perm-' + p);
       if (el) { el.checked = false; el.disabled = true; }
     });
+    // Default Reconcile to on when enabling Diary Mode
+    diaryReconcile = true;
+    document.getElementById('diary-reconcile-chk').checked = true;
+    document.getElementById('reconcile-row').style.display = '';
   } else {
     // Re-enable the 4 toggles (keep them off; user re-enables manually)
     ['add','edit','move','delete'].forEach(p => {
       const el = document.getElementById('perm-' + p);
       if (el) el.disabled = false;
     });
+    document.getElementById('reconcile-row').style.display = 'none';
   }
+  savePrefs();
+  renderGrid();
+});
+
+document.getElementById('diary-reconcile-chk').addEventListener('change', e => {
+  diaryReconcile = e.target.checked;
   savePrefs();
   renderGrid();
 });
@@ -3845,6 +3869,20 @@ function therapistVisible(ev) {
   const names = getEffectiveTherapists(ev);
   if (names.length === 0) return true; // no therapist resolved → always show
   return names.some(t => !hiddenTherapists.has(t)); // show if any therapist is not hidden
+}
+
+function reconcileVisible(ev) {
+  if (!permissions.clone || !diaryReconcile) return true;
+  const today = startOfToday();
+  if (ev.start >= today) return true; // current/future: always show
+  // Past event: check ND: line
+  const ndMatch = (ev.desc || '').match(/^ND:\s*(.*)$/m);
+  if (!ndMatch) return true; // no ND line: show
+  const ndVal = ndMatch[1].trim();
+  if (!ndVal) return true; // ND: blank: show
+  if (ndVal.toUpperCase() === 'NA') return false; // ND: NA: hide
+  if (/^\d{2}\.\d{2}\.\d{4}$/.test(ndVal)) return false; // ND: valid date (DD.MM.YYYY): hide
+  return true; // ND: has other value: show
 }
 // Returns set of therapist names that have at least one event in the current view range
 function getTherapistsInCurrentView() {
