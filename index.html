@@ -1373,6 +1373,10 @@ body.dark .agenda-event-location { color: #666; }
         <label class="toggle-switch"><input type="checkbox" id="perm-move"><span class="slider"></span></label>
       </div>
       <div class="settings-row">
+        <span>Allow Resize</span>
+        <label class="toggle-switch"><input type="checkbox" id="perm-resize"><span class="slider"></span></label>
+      </div>
+      <div class="settings-row">
         <span>Allow Delete</span>
         <label class="toggle-switch"><input type="checkbox" id="perm-delete"><span class="slider"></span></label>
       </div>
@@ -1427,7 +1431,7 @@ let enabledCalendars = new Set(); // set of calendar IDs enabled in settings (ga
 let cachedEvents = {};           // calId -> [event, ...]
 let viewDays     = 3;
 let anchorDate   = startOfToday();
-let permissions  = { add: false, edit: false, move: false, delete: false, clone: false };
+let permissions  = { add: false, edit: false, move: false, delete: false, resize: false, clone: false };
 let diaryReconcile = true;
 let clientViewEnabled = false; // gated by settings toggle
 let clientViewMode    = false; // active client view toggle
@@ -1927,6 +1931,9 @@ async function loadAllEvents() {
 
 function viewNeedsFetch() {
   if (!fetchedRangeMin || !fetchedRangeMax) return true;
+  // Fetch if any active+enabled calendar has no cached data yet (e.g. just toggled on)
+  const active = [...activeCalendars].filter(id => enabledCalendars.has(id));
+  if (active.some(id => cachedEvents[id] === undefined)) return true;
   let viewStart, viewEnd;
   if (monthViewMode) {
     const fom = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1);
@@ -2090,12 +2097,14 @@ function renderToggles() {
       if (activeCalendars.has(cal.id)) {
         activeCalendars.delete(cal.id);
         pill.classList.add('off');
+        savePrefs();
+        renderGrid();
       } else {
         activeCalendars.add(cal.id);
         pill.classList.remove('off');
+        savePrefs();
+        navigateAndRender(); // auto-fetch if this calendar has no cached data
       }
-      savePrefs();
-      renderGrid();
     });
 
     // Drag to reorder
@@ -3759,9 +3768,10 @@ function openSettings() {
   document.getElementById('perm-edit').checked   = permissions.edit;
   document.getElementById('perm-move').checked   = permissions.move;
   document.getElementById('perm-delete').checked = permissions.delete;
+  document.getElementById('perm-resize').checked = permissions.resize;
   document.getElementById('perm-clone').checked  = permissions.clone;
-  // Disable the 4 toggles when clone is active
-  ['add','edit','move','delete'].forEach(p => {
+  // Disable the 5 toggles when Diary Mode is active
+  ['add','edit','move','delete','resize'].forEach(p => {
     document.getElementById('perm-' + p).disabled = permissions.clone;
   });
   // Show/populate Reconcile row
@@ -3775,7 +3785,7 @@ function closeSettings() {
   document.getElementById('settings-backdrop').classList.remove('open');
 }
 
-['add','edit','move','delete'].forEach(p => {
+['add','edit','move','delete','resize'].forEach(p => {
   document.getElementById('perm-' + p).addEventListener('change', e => {
     permissions[p] = e.target.checked;
     savePrefs();
@@ -3786,8 +3796,8 @@ function closeSettings() {
 document.getElementById('perm-clone').addEventListener('change', e => {
   permissions.clone = e.target.checked;
   if (permissions.clone) {
-    // Disable and turn off the 4 other permissions
-    ['add','edit','move','delete'].forEach(p => {
+    // Disable and turn off the 5 other permissions
+    ['add','edit','move','delete','resize'].forEach(p => {
       permissions[p] = false;
       const el = document.getElementById('perm-' + p);
       if (el) { el.checked = false; el.disabled = true; }
@@ -3797,8 +3807,8 @@ document.getElementById('perm-clone').addEventListener('change', e => {
     document.getElementById('diary-reconcile-chk').checked = true;
     document.getElementById('reconcile-row').style.display = '';
   } else {
-    // Re-enable the 4 toggles (keep them off; user re-enables manually)
-    ['add','edit','move','delete'].forEach(p => {
+    // Re-enable the 5 toggles (keep them off; user re-enables manually)
+    ['add','edit','move','delete','resize'].forEach(p => {
       const el = document.getElementById('perm-' + p);
       if (el) el.disabled = false;
     });
@@ -4160,7 +4170,7 @@ function attachEventInteraction(evEl, ev, cal, laneEl, d, pxPerMin) {
     });
   }
 
-  if (permissions.edit) {
+  if (permissions.resize) {
     const topHandle = document.createElement('div');
     topHandle.className = 'resize-handle top';
     const botHandle = document.createElement('div');
