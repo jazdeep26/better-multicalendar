@@ -1894,6 +1894,9 @@ async function fetchEvents(calId, timeMin, timeMax) {
   return events;
 }
 
+let fetchedRangeMin = null; // Date — start of last fetched range
+let fetchedRangeMax = null; // Date — end of last fetched range
+
 async function loadAllEvents() {
   let timeMin, timeMax;
   if (monthViewMode) {
@@ -1905,6 +1908,10 @@ async function loadAllEvents() {
     timeMax = addDays(anchorDate, viewDays + 7).toISOString();
   }
 
+  // Track the fetched range so nav can detect when to re-fetch
+  fetchedRangeMin = new Date(timeMin);
+  fetchedRangeMax = new Date(timeMax);
+
   // Only sync calendars that are enabled in settings
   const active = [...activeCalendars].filter(id => enabledCalendars.has(id));
   const results = await Promise.allSettled(
@@ -1914,6 +1921,27 @@ async function loadAllEvents() {
     if (r.status === 'fulfilled') cachedEvents[active[i]] = r.value;
     else { console.warn('Error fetching', active[i], r.reason); cachedEvents[active[i]] = []; }
   });
+}
+
+function viewNeedsFetch() {
+  if (!fetchedRangeMin || !fetchedRangeMax) return true;
+  let viewStart, viewEnd;
+  if (monthViewMode) {
+    const fom = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1);
+    viewStart = addDays(fom, -7);
+    viewEnd   = addDays(fom, 42);
+  } else {
+    viewStart = getViewStart();
+    viewEnd   = addDays(viewStart, viewDays);
+  }
+  return viewStart < fetchedRangeMin || viewEnd > fetchedRangeMax;
+}
+
+async function navigateAndRender() {
+  if (viewNeedsFetch()) {
+    try { await loadAllEvents(); } catch (e) { if (e.message !== 'token_expired') console.warn(e); }
+  }
+  renderGrid();
 }
 
 // ── APP INIT ──────────────────────────────────────────────────────────────────
@@ -3477,9 +3505,14 @@ document.getElementById('modal-meet-copy-btn').addEventListener('click', () => {
   });
 });
 
+let modalPrevSnapshot = null; // snapshot of event state before edit (for undo)
+let modalPrevStartVal = '';   // previous start value, to compute delta for end-date sync
+
 function openEditModal(ev) {
   modalMode = 'edit';
   modalEventRef = ev;
+  modalPrevSnapshot = { id: ev.id, calId: ev.calId, title: ev.title, start: new Date(ev.start),
+    end: new Date(ev.end), desc: ev.desc || '', location: ev.location || '', isTentative: !!ev.isTentative, meetLink: ev.meetLink || '' };
   document.getElementById('modal-title').textContent = 'Edit Event';
   document.getElementById('modal-evt-title').value    = ev.title === '(No title)' ? '' : ev.title;
   document.getElementById('modal-evt-start').value   = toLocalDatetimeValue(ev.start);
@@ -3488,6 +3521,7 @@ function openEditModal(ev) {
   document.getElementById('modal-evt-desc').value       = ev.desc || '';
   document.getElementById('modal-evt-tentative').checked = !!ev.isTentative;
   document.getElementById('modal-delete-btn').style.display = permissions.delete ? '' : 'none';
+  modalPrevStartVal = toLocalDatetimeValue(ev.start);
   populateCalSelect(ev.calId);
   setupModalMeetLink(ev.meetLink || '');
   document.getElementById('modal-backdrop').classList.add('open');
@@ -3496,6 +3530,7 @@ function openEditModal(ev) {
 function openCreateModal(calId, startDate, endDate) {
   modalMode = 'create';
   modalEventRef = null;
+  modalPrevSnapshot = null;
   document.getElementById('modal-title').textContent = 'New Event';
   document.getElementById('modal-evt-title').value    = '';
   document.getElementById('modal-evt-start').value   = toLocalDatetimeValue(startDate);
@@ -3504,6 +3539,7 @@ function openCreateModal(calId, startDate, endDate) {
   document.getElementById('modal-evt-desc').value       = '';
   document.getElementById('modal-evt-tentative').checked = false;
   document.getElementById('modal-delete-btn').style.display = 'none';
+  modalPrevStartVal = toLocalDatetimeValue(startDate);
   populateCalSelect(calId);
   setupModalMeetLink('');
   document.getElementById('modal-backdrop').classList.add('open');
@@ -3595,6 +3631,11 @@ async function saveModal() {
           isTentative,
           meetLink: created.hangoutLink || '',
         });
+        if (modalPrevSnapshot) {
+          pushUndo({ type: 'edit-cal', prevId: modalPrevSnapshot.id, newId: created.id,
+            prevCalId: origCalId, newCalId: calId, prev: modalPrevSnapshot,
+            next: { title, start: startDt, end: endDt, desc, location, isTentative, meetLink: modalEventRef.meetLink || '' } });
+        }
       } else {
         const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(origCalId)}/events/${encodeURIComponent(modalEventRef.id)}`;
         const updated = await apiWrite('PATCH', url, body);
@@ -3610,6 +3651,10 @@ async function saveModal() {
             isTentative,
             meetLink: modalEventRef.meetLink || '',
           };
+        }
+        if (modalPrevSnapshot) {
+          pushUndo({ type: 'edit', evId: modalEventRef.id, calId: origCalId, prev: modalPrevSnapshot,
+            next: { title, start: startDt, end: endDt, desc, location, isTentative, meetLink: modalEventRef.meetLink || '' } });
         }
       }
     }
@@ -3952,7 +3997,6 @@ async function applyHistoryEntry(entry, direction) {
   }
   if (entry.type === 'clone') {
     if (direction === 'undo') {
-      // Delete the cloned event
       try {
         await apiWrite('DELETE',
           `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(entry.newCalId)}/events/${encodeURIComponent(entry.clonedId)}?sendUpdates=none`
@@ -3962,7 +4006,6 @@ async function applyHistoryEntry(entry, direction) {
         showToast('Clone undone');
       } catch(err) { alert('Undo failed: ' + err.message); }
     } else {
-      // Re-clone the original event at the saved new time
       try {
         const origEv = (cachedEvents[entry.origCalId] || []).find(e => e.id === entry.origId);
         if (!origEv) { showToast('Original event not found'); return; }
@@ -3977,13 +4020,63 @@ async function applyHistoryEntry(entry, direction) {
           isTentative: false, meetLink: '' };
         if (!cachedEvents[entry.newCalId]) cachedEvents[entry.newCalId] = [];
         cachedEvents[entry.newCalId].push(newEvObj);
-        entry.clonedId = created.id; // update for future undo
+        entry.clonedId = created.id;
         renderGrid();
         showToast('Clone redone');
       } catch(err) { alert('Redo failed: ' + err.message); }
     }
-  } else {
-    // move / resize
+    return;
+  }
+  if (entry.type === 'edit') {
+    const snapshot = direction === 'undo' ? entry.prev : entry.next;
+    const ev = (cachedEvents[entry.calId] || []).find(e => e.id === entry.evId);
+    if (!ev) { showToast('Event not found'); return; }
+    const fullDesc = snapshot.isTentative ? (snapshot.desc ? `Tentative\n${snapshot.desc}` : 'Tentative') : (snapshot.desc || '');
+    const body = { summary: snapshot.title, description: fullDesc, location: snapshot.location || undefined,
+      start: { dateTime: toOffsetISO(new Date(snapshot.start)) }, end: { dateTime: toOffsetISO(new Date(snapshot.end)) } };
+    const prevState = { ...ev };
+    Object.assign(ev, { title: snapshot.title, start: new Date(snapshot.start), end: new Date(snapshot.end),
+      desc: snapshot.desc, location: snapshot.location, isTentative: snapshot.isTentative });
+    renderGrid();
+    try {
+      await apiWrite('PATCH',
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(entry.calId)}/events/${encodeURIComponent(entry.evId)}`, body);
+      showToast(direction === 'undo' ? 'Edit undone' : 'Edit redone');
+    } catch(err) {
+      Object.assign(ev, prevState); renderGrid();
+      alert((direction === 'undo' ? 'Undo' : 'Redo') + ' failed: ' + err.message);
+    }
+    return;
+  }
+  if (entry.type === 'edit-cal') {
+    const snapshot = direction === 'undo' ? entry.prev : entry.next;
+    const fromCalId = direction === 'undo' ? entry.newCalId : entry.prevCalId;
+    const toCalId   = direction === 'undo' ? entry.prevCalId : entry.newCalId;
+    const fromId    = direction === 'undo' ? (entry.redoneId || entry.newId) : (entry.undoneId || entry.prevId);
+    const fullDesc = snapshot.isTentative ? (snapshot.desc ? `Tentative\n${snapshot.desc}` : 'Tentative') : (snapshot.desc || '');
+    const body = { summary: snapshot.title, description: fullDesc, location: snapshot.location || undefined,
+      start: { dateTime: toOffsetISO(new Date(snapshot.start)) }, end: { dateTime: toOffsetISO(new Date(snapshot.end)) } };
+    try {
+      const created = await apiWrite('POST',
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(toCalId)}/events?sendUpdates=none`, body);
+      await apiWrite('DELETE',
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(fromCalId)}/events/${encodeURIComponent(fromId)}?sendUpdates=none`);
+      cachedEvents[fromCalId] = (cachedEvents[fromCalId] || []).filter(e => e.id !== fromId);
+      const cs = created.start?.dateTime || created.start?.date;
+      const ce = created.end?.dateTime   || created.end?.date;
+      if (!cachedEvents[toCalId]) cachedEvents[toCalId] = [];
+      cachedEvents[toCalId].push({ id: created.id, calId: toCalId, title: created.summary || snapshot.title,
+        start: new Date(cs), end: new Date(ce), desc: snapshot.desc || '', location: snapshot.location || '',
+        isTentative: snapshot.isTentative, meetLink: snapshot.meetLink || '' });
+      if (direction === 'undo') entry.undoneId = created.id;
+      else entry.redoneId = created.id;
+      renderGrid();
+      showToast(direction === 'undo' ? 'Edit undone' : 'Edit redone');
+    } catch(err) { alert((direction === 'undo' ? 'Undo' : 'Redo') + ' failed: ' + err.message); }
+    return;
+  }
+  // move / resize
+  {
     const ev = (cachedEvents[entry.calId] || []).find(e => e.id === entry.evId);
     if (!ev) { showToast('Event not found'); return; }
     const targetStart = direction === 'undo' ? entry.prevStart : entry.nextStart;
@@ -4352,6 +4445,19 @@ document.getElementById('settings-dark-mode').addEventListener('change', e => {
 document.getElementById('modal-save-btn').addEventListener('click', saveModal);
 document.getElementById('modal-delete-btn').addEventListener('click', deleteModal);
 document.getElementById('modal-cancel-btn').addEventListener('click', closeModal);
+
+// Auto-sync end date when start changes: shift end by same delta to preserve duration
+document.getElementById('modal-evt-start').addEventListener('change', () => {
+  const startEl = document.getElementById('modal-evt-start');
+  const endEl   = document.getElementById('modal-evt-end');
+  if (!startEl.value || !endEl.value || !modalPrevStartVal) { modalPrevStartVal = startEl.value; return; }
+  const delta = new Date(startEl.value) - new Date(modalPrevStartVal);
+  if (delta !== 0) {
+    const newEnd = new Date(new Date(endEl.value).getTime() + delta);
+    endEl.value = toLocalDatetimeValue(newEnd);
+  }
+  modalPrevStartVal = startEl.value;
+});
 document.getElementById('modal-backdrop').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
@@ -4518,14 +4624,14 @@ document.querySelectorAll('.view-btn').forEach(btn => {
 document.getElementById('prev-btn').addEventListener('click', () => {
   if (monthViewMode) { anchorDate = new Date(anchorDate.getFullYear(), anchorDate.getMonth() - 1, 1); }
   else { anchorDate = addDays(anchorDate, viewDays === 7 ? -7 : -1); }
-  renderGrid();
+  navigateAndRender();
 });
 document.getElementById('next-btn').addEventListener('click', () => {
   if (monthViewMode) { anchorDate = new Date(anchorDate.getFullYear(), anchorDate.getMonth() + 1, 1); }
   else { anchorDate = addDays(anchorDate, viewDays === 7 ? +7 : +1); }
-  renderGrid();
+  navigateAndRender();
 });
-document.getElementById('today-btn').addEventListener('click', () => { anchorDate = startOfToday(); renderGrid(); });
+document.getElementById('today-btn').addEventListener('click', () => { anchorDate = startOfToday(); navigateAndRender(); });
 
 // Refresh now-line every minute
 setInterval(() => {
