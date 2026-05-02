@@ -603,8 +603,6 @@ body.dark .modal-tentative-row label { color: #e0e0e0; }
 .toggle-switch input:checked + .toggle-track { background: #f4a800; }
 .toggle-switch input:checked + .toggle-track::before { transform: translateX(16px); }
 #modal-evt-paid:checked + .toggle-track { background: #22c55e; }
-/* paid badge on event tiles */
-.ev-paid-badge { font-size: 9px; font-weight: 700; background: #22c55e; color: #fff; border-radius: 3px; padding: 1px 4px; margin-left: 3px; vertical-align: middle; letter-spacing: .3px; }
 /* tentative event styling — diagonal stripe overlay */
 .event.tentative {
   background-image: repeating-linear-gradient(
@@ -2575,10 +2573,9 @@ function renderGrid() {
         evEl.style.width = `calc(${pct}% - ${g * 2}px)`;
 
         const dur = endMins - startMins;
-        const paidBadge = ev.isPaid ? `<span class="ev-paid-badge">₹${ev.paidAmount != null ? ev.paidAmount.toLocaleString('en-IN') : '✓'}</span>` : '';
         evEl.innerHTML = dur >= 30
-          ? `<div class="ev-title">${escHtml(ev.title)}${paidBadge}</div><div class="ev-time">${fmtTime(ev.start)}–${fmtTime(ev.end)}</div>`
-          : `<div class="ev-title">${escHtml(ev.title)}${paidBadge}</div>`;
+          ? `<div class="ev-title">${escHtml(ev.title)}</div><div class="ev-time">${fmtTime(ev.start)}–${fmtTime(ev.end)}</div>`
+          : `<div class="ev-title">${escHtml(ev.title)}</div>`;
 
         // Copy button
         const copyBtn = document.createElement('button');
@@ -2899,10 +2896,9 @@ function renderClientGrid() {
         evEl.style.width = `calc(${pct}% - ${g * 2}px)`;
 
         const dur = endMins - startMins;
-        const paidBadge = ev.isPaid ? `<span class="ev-paid-badge">₹${ev.paidAmount != null ? ev.paidAmount.toLocaleString('en-IN') : '✓'}</span>` : '';
         evEl.innerHTML = dur >= 30
-          ? `<div class="ev-title">${escHtml(ev.title)}${paidBadge}</div><div class="ev-time">${fmtTime(ev.start)}–${fmtTime(ev.end)}</div>`
-          : `<div class="ev-title">${escHtml(ev.title)}${paidBadge}</div>`;
+          ? `<div class="ev-title">${escHtml(ev.title)}</div><div class="ev-time">${fmtTime(ev.start)}–${fmtTime(ev.end)}</div>`
+          : `<div class="ev-title">${escHtml(ev.title)}</div>`;
 
         evEl.addEventListener('mouseenter', e => showTooltip(e, ev, cal || { summary: '' }));
         evEl.addEventListener('mousemove',  e => moveTooltip(e));
@@ -2950,10 +2946,9 @@ function renderClientGrid() {
         evEl.style.width = `calc(${pct}% - ${g * 2}px)`;
 
         const dur = endMins - startMins;
-        const paidBadge = ev.isPaid ? `<span class="ev-paid-badge">₹${ev.paidAmount != null ? ev.paidAmount.toLocaleString('en-IN') : '✓'}</span>` : '';
         evEl.innerHTML = dur >= 30
-          ? `<div class="ev-title">${escHtml(ev.title)}${paidBadge}</div><div class="ev-time">${fmtTime(ev.start)}–${fmtTime(ev.end)}</div>`
-          : `<div class="ev-title">${escHtml(ev.title)}${paidBadge}</div>`;
+          ? `<div class="ev-title">${escHtml(ev.title)}</div><div class="ev-time">${fmtTime(ev.start)}–${fmtTime(ev.end)}</div>`
+          : `<div class="ev-title">${escHtml(ev.title)}</div>`;
 
         evEl.addEventListener('mouseenter', e => showTooltip(e, ev, calEntry || { summary: '' }));
         evEl.addEventListener('mousemove',  e => moveTooltip(e));
