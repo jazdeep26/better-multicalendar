@@ -408,7 +408,7 @@ body.dark .time-gutter { background: #1a1a2e; }
   transition: box-shadow 0.15s;
 }
 .event:hover { box-shadow: 0 3px 10px rgba(0,0,0,0.2); z-index: 10; }
-.event .ev-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 18px; }
+.event .ev-title { overflow: hidden; text-overflow: ellipsis; padding-right: 18px; }
 .event .ev-time  { font-size: 10px; font-weight: 400; opacity: 0.8; margin-top: 1px; }
 .ev-copy-btn {
   position: absolute;
@@ -602,6 +602,9 @@ body.dark .modal-tentative-row label { color: #e0e0e0; }
 }
 .toggle-switch input:checked + .toggle-track { background: #f4a800; }
 .toggle-switch input:checked + .toggle-track::before { transform: translateX(16px); }
+#modal-evt-paid:checked + .toggle-track { background: #22c55e; }
+/* paid badge on event tiles */
+.ev-paid-badge { font-size: 9px; font-weight: 700; background: #22c55e; color: #fff; border-radius: 3px; padding: 1px 4px; margin-left: 3px; vertical-align: middle; letter-spacing: .3px; }
 /* tentative event styling — diagonal stripe overlay */
 .event.tentative {
   background-image: repeating-linear-gradient(
@@ -1307,6 +1310,15 @@ body.dark .agenda-event-location { color: #666; }
       </label>
       <label for="modal-evt-tentative">Tentative</label>
     </div>
+    <div class="modal-tentative-row">
+      <label class="toggle-switch">
+        <input type="checkbox" id="modal-evt-paid" onchange="togglePaidAmount()">
+        <span class="toggle-track"></span>
+      </label>
+      <label for="modal-evt-paid">Paid</label>
+      <input type="number" id="modal-evt-paid-amount" placeholder="Amount (optional)" min="0" step="1"
+        style="display:none;margin-left:12px;width:160px;border:1px solid #d1d5db;border-radius:6px;padding:5px 8px;font-size:13px;">
+    </div>
     <div class="modal-actions">
       <button class="btn-save" id="modal-save-btn">Save</button>
       <button class="btn-delete" id="modal-delete-btn" style="display:none">Delete</button>
@@ -1878,7 +1890,10 @@ async function fetchEvents(calId, timeMin, timeMax) {
       if (!start) continue;
       const rawDesc = ev.description || '';
       const isTentative = /^Tentative$/im.test(rawDesc);
-      const cleanDesc = rawDesc.replace(/^Tentative\r?\n?/im, '').trim();
+      const paidMatch = rawDesc.match(/^Paid(?::\s*(\d+))?$/im);
+      const isPaid = !!paidMatch;
+      const paidAmount = isPaid && paidMatch[1] ? parseInt(paidMatch[1]) : null;
+      const cleanDesc = rawDesc.replace(/^Tentative\r?\n?/im, '').replace(/^Paid(?::\s*\d+)?\r?\n?/im, '').trim();
       // Prefer hangoutLink, then scan description, then scan location for meet/teams/zoom URLs
       const MEET_RE = /https:\/\/(?:meet\.google\.com|teams\.microsoft\.com|teams\.live\.com|zoom\.us\/j|us\d+\.zoom\.us\/j)[^\s"<]*/i;
       const meetLink = ev.hangoutLink ||
@@ -1894,6 +1909,8 @@ async function fetchEvents(calId, timeMin, timeMax) {
         desc:        cleanDesc,
         location:    ev.location || '',
         isTentative,
+        isPaid,
+        paidAmount,
         meetLink,
       });
     }
@@ -2558,9 +2575,10 @@ function renderGrid() {
         evEl.style.width = `calc(${pct}% - ${g * 2}px)`;
 
         const dur = endMins - startMins;
+        const paidBadge = ev.isPaid ? `<span class="ev-paid-badge">₹${ev.paidAmount != null ? ev.paidAmount.toLocaleString('en-IN') : '✓'}</span>` : '';
         evEl.innerHTML = dur >= 30
-          ? `<div class="ev-title">${escHtml(ev.title)}</div><div class="ev-time">${fmtTime(ev.start)}–${fmtTime(ev.end)}</div>`
-          : `<div class="ev-title">${escHtml(ev.title)}</div>`;
+          ? `<div class="ev-title">${escHtml(ev.title)}${paidBadge}</div><div class="ev-time">${fmtTime(ev.start)}–${fmtTime(ev.end)}</div>`
+          : `<div class="ev-title">${escHtml(ev.title)}${paidBadge}</div>`;
 
         // Copy button
         const copyBtn = document.createElement('button');
@@ -2881,9 +2899,10 @@ function renderClientGrid() {
         evEl.style.width = `calc(${pct}% - ${g * 2}px)`;
 
         const dur = endMins - startMins;
+        const paidBadge = ev.isPaid ? `<span class="ev-paid-badge">₹${ev.paidAmount != null ? ev.paidAmount.toLocaleString('en-IN') : '✓'}</span>` : '';
         evEl.innerHTML = dur >= 30
-          ? `<div class="ev-title">${escHtml(ev.title)}</div><div class="ev-time">${fmtTime(ev.start)}–${fmtTime(ev.end)}</div>`
-          : `<div class="ev-title">${escHtml(ev.title)}</div>`;
+          ? `<div class="ev-title">${escHtml(ev.title)}${paidBadge}</div><div class="ev-time">${fmtTime(ev.start)}–${fmtTime(ev.end)}</div>`
+          : `<div class="ev-title">${escHtml(ev.title)}${paidBadge}</div>`;
 
         evEl.addEventListener('mouseenter', e => showTooltip(e, ev, cal || { summary: '' }));
         evEl.addEventListener('mousemove',  e => moveTooltip(e));
@@ -2931,9 +2950,10 @@ function renderClientGrid() {
         evEl.style.width = `calc(${pct}% - ${g * 2}px)`;
 
         const dur = endMins - startMins;
+        const paidBadge = ev.isPaid ? `<span class="ev-paid-badge">₹${ev.paidAmount != null ? ev.paidAmount.toLocaleString('en-IN') : '✓'}</span>` : '';
         evEl.innerHTML = dur >= 30
-          ? `<div class="ev-title">${escHtml(ev.title)}</div><div class="ev-time">${fmtTime(ev.start)}–${fmtTime(ev.end)}</div>`
-          : `<div class="ev-title">${escHtml(ev.title)}</div>`;
+          ? `<div class="ev-title">${escHtml(ev.title)}${paidBadge}</div><div class="ev-time">${fmtTime(ev.start)}–${fmtTime(ev.end)}</div>`
+          : `<div class="ev-title">${escHtml(ev.title)}${paidBadge}</div>`;
 
         evEl.addEventListener('mouseenter', e => showTooltip(e, ev, calEntry || { summary: '' }));
         evEl.addEventListener('mousemove',  e => moveTooltip(e));
@@ -3545,6 +3565,9 @@ function openEditModal(ev) {
   document.getElementById('modal-evt-location').value   = ev.location || '';
   document.getElementById('modal-evt-desc').value       = ev.desc || '';
   document.getElementById('modal-evt-tentative').checked = !!ev.isTentative;
+  document.getElementById('modal-evt-paid').checked = !!ev.isPaid;
+  document.getElementById('modal-evt-paid-amount').value = ev.paidAmount != null ? ev.paidAmount : '';
+  document.getElementById('modal-evt-paid-amount').style.display = ev.isPaid ? '' : 'none';
   document.getElementById('modal-delete-btn').style.display = permissions.delete ? '' : 'none';
   modalPrevStartVal = toLocalDatetimeValue(ev.start);
   populateCalSelect(ev.calId);
@@ -3563,11 +3586,20 @@ function openCreateModal(calId, startDate, endDate) {
   document.getElementById('modal-evt-location').value   = '';
   document.getElementById('modal-evt-desc').value       = '';
   document.getElementById('modal-evt-tentative').checked = false;
+  document.getElementById('modal-evt-paid').checked = false;
+  document.getElementById('modal-evt-paid-amount').value = '';
+  document.getElementById('modal-evt-paid-amount').style.display = 'none';
   document.getElementById('modal-delete-btn').style.display = 'none';
   modalPrevStartVal = toLocalDatetimeValue(startDate);
   populateCalSelect(calId);
   setupModalMeetLink('');
   document.getElementById('modal-backdrop').classList.add('open');
+}
+
+function togglePaidAmount() {
+  const checked = document.getElementById('modal-evt-paid').checked;
+  document.getElementById('modal-evt-paid-amount').style.display = checked ? '' : 'none';
+  if (!checked) document.getElementById('modal-evt-paid-amount').value = '';
 }
 
 function closeModal() {
@@ -3582,7 +3614,10 @@ async function saveModal() {
   const endVal   = document.getElementById('modal-evt-end').value;
   const location   = document.getElementById('modal-evt-location').value.trim();
   const desc       = document.getElementById('modal-evt-desc').value.trim();
-  const isTentative = document.getElementById('modal-evt-tentative').checked;
+  const isTentative  = document.getElementById('modal-evt-tentative').checked;
+  const isPaid       = document.getElementById('modal-evt-paid').checked;
+  const paidAmtRaw   = document.getElementById('modal-evt-paid-amount').value.trim();
+  const paidAmount   = isPaid && paidAmtRaw !== '' ? parseInt(paidAmtRaw) : null;
   const calId      = document.getElementById('modal-evt-cal').value;
 
   if (!startVal || !endVal) { alert('Please set start and end times.'); return; }
@@ -3599,8 +3634,10 @@ async function saveModal() {
     return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00${sign}${pad(Math.floor(Math.abs(off)/60))}:${pad(Math.abs(off)%60)}`;
   }
 
-  // Prepend "Tentative" line to description for persistence (readable in Google Calendar too)
-  const fullDesc = isTentative ? (desc ? `Tentative\n${desc}` : 'Tentative') : (desc || '');
+  // Prepend metadata lines to description for persistence (readable in Google Calendar too)
+  const paidLine  = isPaid ? (paidAmount != null ? `Paid: ${paidAmount}` : 'Paid') : '';
+  const metaLines = [isTentative ? 'Tentative' : '', paidLine].filter(Boolean).join('\n');
+  const fullDesc  = metaLines ? (desc ? `${metaLines}\n${desc}` : metaLines) : (desc || '');
   const body = {
     summary:     title,
     start:       { dateTime: toOffsetISO(startDt) },
@@ -3627,7 +3664,7 @@ async function saveModal() {
         title: created.summary || '(No title)',
         start: new Date(start), end: new Date(end),
         desc: desc, location: created.location || '',
-        isTentative,
+        isTentative, isPaid, paidAmount,
         meetLink: created.hangoutLink || '',
       });
     } else {
@@ -3653,7 +3690,7 @@ async function saveModal() {
           title: created.summary || '(No title)',
           start: new Date(cs), end: new Date(ce),
           desc: desc, location: created.location || '',
-          isTentative,
+          isTentative, isPaid, paidAmount,
           meetLink: created.hangoutLink || '',
         });
         if (modalPrevSnapshot) {
@@ -3673,7 +3710,7 @@ async function saveModal() {
             title: updated.summary || '(No title)',
             start: new Date(start), end: new Date(end),
             desc: desc, location: updated.location || '',
-            isTentative,
+            isTentative, isPaid, paidAmount,
             meetLink: modalEventRef.meetLink || '',
           };
         }
