@@ -845,6 +845,26 @@ body.dark .lane-col.drop-target { outline-color: #8ab4f8; background: rgba(138,1
   opacity: 0; transition: opacity 0.2s;
 }
 .undo-toast.visible { opacity: 1; }
+/* ── TENTATIVE TOGGLE BUTTON ── */
+.tentative-toggle-btn {
+  width: 30px; height: 30px;
+  border: 1px solid #ddd;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 15px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.1s, border-color 0.1s;
+  flex-shrink: 0;
+  color: #888;
+}
+.tentative-toggle-btn:hover { background: #f5f5f5; }
+.tentative-toggle-btn.hiding { background: #fce8e6; border-color: #ea4335; color: #ea4335; }
+.tentative-toggle-btn.hiding:hover { background: #fad2cf; }
+body.dark .tentative-toggle-btn { background: #16213e; border-color: #2a2a4a; color: #666; }
+body.dark .tentative-toggle-btn:hover { background: #0f3460; }
+body.dark .tentative-toggle-btn.hiding { background: #3a1010; border-color: #ea4335; color: #ea4335; }
+
 /* ── LOCK / UNDO-REDO BUTTONS ── */
 .lock-btn {
   width: 30px; height: 30px;
@@ -1237,6 +1257,7 @@ body.dark .agenda-event-location { color: #666; }
       </button>
       <span id="nav-loading-indicator" title="Loading events…" style="display:none;font-size:16px;opacity:0.6;line-height:1">↻</span>
 
+      <button class="tentative-toggle-btn" id="tentative-toggle-btn" title="Show/hide tentative events">◈</button>
       <button class="undo-redo-btn" id="undo-btn" title="Undo (⌘Z)" disabled>↩</button>
       <button class="undo-redo-btn" id="redo-btn" title="Redo (⌘⇧Z)" disabled>↪</button>
       <button class="lock-btn" id="lock-btn" title="Toggle lock (prevents accidental edits)">🔓</button>
@@ -1461,6 +1482,7 @@ let gridLocked = false;          // lock mode: prevents accidental edits
 let ribbonMinimized = false;     // mobile: collapse topbar-row1
 let colorByTherapist = false;    // color events by therapist name (from "Client - Type - Therapist" titles)
 let hiddenTherapists = new Set(); // therapist names to hide in filter
+let hideTentative = false;        // hide tentative events (when not in clone/diary mode)
 
 // ── PREFERENCES (localStorage) ───────────────────────────────────────────────
 const PREF_KEY = 'calview_prefs';
@@ -1490,6 +1512,7 @@ function savePrefs() {
     ribbonMinimized,
     colorByTherapist,
     hiddenTherapists: [...hiddenTherapists],
+    hideTentative,
     diaryReconcile,
   }));
 }
@@ -2050,6 +2073,7 @@ async function initApp() {
     if (typeof prefs.ribbonMinimized === 'boolean') ribbonMinimized = prefs.ribbonMinimized;
     if (typeof prefs.colorByTherapist === 'boolean') colorByTherapist = prefs.colorByTherapist;
     if (Array.isArray(prefs.hiddenTherapists)) hiddenTherapists = new Set(prefs.hiddenTherapists);
+    if (typeof prefs.hideTentative === 'boolean') hideTentative = prefs.hideTentative;
     if (typeof prefs.diaryReconcile === 'boolean') diaryReconcile = prefs.diaryReconcile;
   } else {
     enabledCalendars = new Set(allIds);
@@ -2250,6 +2274,7 @@ function renderAgendaView() {
     .forEach(cal => {
       (cachedEvents[cal.id] || []).forEach(ev => {
         if (!reconcileVisible(ev)) return;
+        if (hideTentative && !permissions.clone && ev.isTentative) return;
         const ds = fmtDate(ev.start);
         if (byDate.has(ds)) byDate.get(ds).push({ ev, cal });
       });
@@ -2545,6 +2570,7 @@ function renderGrid() {
 
       const events = (cachedEvents[cal.id] || []).filter(ev => {
         if (fmtDate(ev.start) !== fmtDate(d)) return false;
+        if (hideTentative && !permissions.clone && ev.isTentative) return false;
         if (!reconcileVisible(ev)) return false;
         return therapistVisible(ev);
       });
@@ -2857,7 +2883,11 @@ function renderClientGrid() {
 
     // Collect all events for this day across all calendars
     const allDayEvs = Object.entries(cachedEvents).flatMap(([calId, evs]) =>
-      evs.filter(ev => fmtDate(ev.start) === dateStr).map(ev => ({ ev, calId }))
+      evs.filter(ev => {
+        if (fmtDate(ev.start) !== dateStr) return false;
+        if (hideTentative && !permissions.clone && ev.isTentative) return false;
+        return true;
+      }).map(ev => ({ ev, calId }))
     );
 
     const clientsToday = clientsByDay.get(dateStr) || [];
@@ -3180,7 +3210,12 @@ function renderSingleClientGrid() {
 
     // Collect all events for this day
     const allDayEvs = Object.entries(cachedEvents).flatMap(([calId, evs]) =>
-      evs.filter(ev => fmtDate(ev.start) === dateStr && reconcileVisible(ev)).map(ev => ({ ev, calId }))
+      evs.filter(ev => {
+        if (fmtDate(ev.start) !== dateStr) return false;
+        if (!reconcileVisible(ev)) return false;
+        if (hideTentative && !permissions.clone && ev.isTentative) return false;
+        return true;
+      }).map(ev => ({ ev, calId }))
     );
 
     // Filter to this client's events that pass the session type filter
@@ -3311,6 +3346,8 @@ function buildReminderMessage(clickedEv, dayDate, allDayEvents) {
   // Collect this child's events: direct match OR shared (Group/Lunch) that lists this child
   const childEvs = allDayEvents
     .filter(ev => {
+      // Exclude tentative if hiding (matches what's visible in the grid)
+      if (hideTentative && !permissions.clone && ev.isTentative) return false;
       const { childName: p0 } = parseEventTitle(ev.title);
       if (p0 === childName) return true;
       // Shared event: parts[0] is a comma-separated list — check if childName is in it
@@ -3881,6 +3918,14 @@ function showToast(msg) {
   t.classList.add('visible');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('visible'), 1800);
+}
+
+// ── TENTATIVE TOGGLE ─────────────────────────────────────────────────────────
+function applyTentativeState() {
+  const btn = document.getElementById('tentative-toggle-btn');
+  if (!btn) return;
+  btn.classList.toggle('hiding', hideTentative);
+  btn.title = hideTentative ? 'Tentative events hidden — click to show' : 'Click to hide tentative events';
 }
 
 // ── LOCK ─────────────────────────────────────────────────────────────────────
@@ -4543,6 +4588,15 @@ document.addEventListener('keydown', e => {
   }
 });
 
+// ── TENTATIVE TOGGLE BUTTON ───────────────────────────────────────────────────
+document.getElementById('tentative-toggle-btn').addEventListener('click', () => {
+  hideTentative = !hideTentative;
+  applyTentativeState();
+  savePrefs();
+  renderGrid();
+  showToast(hideTentative ? 'Tentative events hidden' : 'Tentative events visible');
+});
+
 // ── LOCK BUTTON ───────────────────────────────────────────────────────────────
 document.getElementById('lock-btn').addEventListener('click', () => {
   gridLocked = !gridLocked;
@@ -4709,6 +4763,10 @@ setInterval(() => {
     if (typeof prefs.gridLocked === 'boolean') {
       gridLocked = prefs.gridLocked;
       applyLockState();
+    }
+    if (typeof prefs.hideTentative === 'boolean') {
+      hideTentative = prefs.hideTentative;
+      applyTentativeState();
     }
     if (typeof prefs.ribbonMinimized === 'boolean' && prefs.ribbonMinimized) {
       ribbonMinimized = true;
