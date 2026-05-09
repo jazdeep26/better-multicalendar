@@ -1338,6 +1338,10 @@ body.dark .agenda-event-location { color: #666; }
       <input type="number" id="modal-evt-paid-amount" placeholder="Amount (optional)" min="0" step="1"
         style="display:none;margin-left:12px;width:160px;border:1px solid #d1d5db;border-radius:6px;padding:5px 8px;font-size:13px;">
     </div>
+    <!-- Multi-client paid grid (shown instead of single amount when event has multiple clients) -->
+    <div id="modal-paid-multi" style="display:none;margin-top:6px;margin-left:4px;">
+      <div id="modal-paid-multi-rows" style="display:flex;flex-direction:column;gap:6px;"></div>
+    </div>
     <div class="modal-actions">
       <button class="btn-save" id="modal-save-btn">Save</button>
       <button class="btn-delete" id="modal-delete-btn" style="display:none">Delete</button>
@@ -1911,10 +1915,30 @@ async function fetchEvents(calId, timeMin, timeMax) {
       if (!start) continue;
       const rawDesc = ev.description || '';
       const isTentative = /^Tentative$/im.test(rawDesc);
-      const paidMatch = rawDesc.match(/^Paid(?::\s*(\d+))?$/im);
+      // Paid line: "Paid" | "Paid: 1100" (single) | "Paid: Kyra=1100, Lavanya=1000" (multi)
+      const paidMatch = rawDesc.match(/^Paid(?::\s*(.+))?$/im);
       const isPaid = !!paidMatch;
-      const paidAmount = isPaid && paidMatch[1] ? parseInt(paidMatch[1]) : null;
-      const cleanDesc = rawDesc.replace(/^Tentative\r?\n?/im, '').replace(/^Paid(?::\s*\d+)?\r?\n?/im, '').trim();
+      const paidRaw = isPaid && paidMatch[1] ? paidMatch[1].trim() : null;
+      // Multi-paid: contains "Name=amount" entries
+      const isMultiPaid = paidRaw && /[a-zA-Z]+=\d+|[a-zA-Z]+,/.test(paidRaw);
+      let paidAmount = null;
+      let paidClients = null; // { name: amount|null }
+      if (isPaid && paidRaw) {
+        if (isMultiPaid) {
+          paidClients = {};
+          paidRaw.split(',').map(s => s.trim()).filter(Boolean).forEach(entry => {
+            const eq = entry.indexOf('=');
+            if (eq > -1) {
+              paidClients[entry.slice(0, eq).trim()] = parseInt(entry.slice(eq + 1).trim()) || null;
+            } else {
+              paidClients[entry] = null;
+            }
+          });
+        } else {
+          paidAmount = parseInt(paidRaw) || null;
+        }
+      }
+      const cleanDesc = rawDesc.replace(/^Tentative\r?\n?/im, '').replace(/^Paid(?::[^\n]*)?\r?\n?/im, '').trim();
       // Prefer hangoutLink, then scan description, then scan location for meet/teams/zoom URLs
       const MEET_RE = /https:\/\/(?:meet\.google\.com|teams\.microsoft\.com|teams\.live\.com|zoom\.us\/j|us\d+\.zoom\.us\/j)[^\s"<]*/i;
       const meetLink = ev.hangoutLink ||
@@ -1932,6 +1956,7 @@ async function fetchEvents(calId, timeMin, timeMax) {
         isTentative,
         isPaid,
         paidAmount,
+        paidClients,
         meetLink,
       });
     }
@@ -3597,9 +3622,22 @@ function openEditModal(ev) {
   document.getElementById('modal-evt-location').value   = ev.location || '';
   document.getElementById('modal-evt-desc').value       = ev.desc || '';
   document.getElementById('modal-evt-tentative').checked = !!ev.isTentative;
-  document.getElementById('modal-evt-paid').checked = !!ev.isPaid;
-  document.getElementById('modal-evt-paid-amount').value = ev.paidAmount != null ? ev.paidAmount : '';
-  document.getElementById('modal-evt-paid-amount').style.display = ev.isPaid ? '' : 'none';
+  const _editClients = getClientsFromTitle(ev.title);
+  const _multiDiv    = document.getElementById('modal-paid-multi');
+  if (_editClients) {
+    _multiDiv.dataset.active = '1';
+    document.getElementById('modal-evt-paid-amount').style.display = 'none';
+    const _hasPaid = ev.isPaid && (ev.paidClients ? Object.keys(ev.paidClients).length > 0 : false);
+    document.getElementById('modal-evt-paid').checked = !!ev.isPaid;
+    buildMultiPaidRows(_editClients, ev.paidClients || null);
+    _multiDiv.style.display = ev.isPaid ? '' : 'none';
+  } else {
+    _multiDiv.dataset.active = '0';
+    _multiDiv.style.display  = 'none';
+    document.getElementById('modal-evt-paid').checked = !!ev.isPaid;
+    document.getElementById('modal-evt-paid-amount').value = ev.paidAmount != null ? ev.paidAmount : '';
+    document.getElementById('modal-evt-paid-amount').style.display = ev.isPaid ? '' : 'none';
+  }
   document.getElementById('modal-delete-btn').style.display = permissions.delete ? '' : 'none';
   modalPrevStartVal = toLocalDatetimeValue(ev.start);
   populateCalSelect(ev.calId);
@@ -3621,6 +3659,10 @@ function openCreateModal(calId, startDate, endDate) {
   document.getElementById('modal-evt-paid').checked = false;
   document.getElementById('modal-evt-paid-amount').value = '';
   document.getElementById('modal-evt-paid-amount').style.display = 'none';
+  const _createMultiDiv = document.getElementById('modal-paid-multi');
+  _createMultiDiv.dataset.active = '0';
+  _createMultiDiv.style.display  = 'none';
+  document.getElementById('modal-paid-multi-rows').innerHTML = '';
   document.getElementById('modal-delete-btn').style.display = 'none';
   modalPrevStartVal = toLocalDatetimeValue(startDate);
   populateCalSelect(calId);
@@ -3629,9 +3671,39 @@ function openCreateModal(calId, startDate, endDate) {
 }
 
 function togglePaidAmount() {
-  const checked = document.getElementById('modal-evt-paid').checked;
-  document.getElementById('modal-evt-paid-amount').style.display = checked ? '' : 'none';
-  if (!checked) document.getElementById('modal-evt-paid-amount').value = '';
+  const checked   = document.getElementById('modal-evt-paid').checked;
+  const multiDiv  = document.getElementById('modal-paid-multi');
+  const isMulti   = multiDiv.dataset.active === '1';
+  if (isMulti) {
+    multiDiv.style.display = checked ? '' : 'none';
+  } else {
+    document.getElementById('modal-evt-paid-amount').style.display = checked ? '' : 'none';
+    if (!checked) document.getElementById('modal-evt-paid-amount').value = '';
+  }
+}
+
+// Returns comma-separated client names from a multi-client event title (first segment)
+function getClientsFromTitle(title) {
+  const p0 = (title || '').split(' - ')[0] || '';
+  if (!p0.includes(',')) return null;
+  return p0.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+function buildMultiPaidRows(clients, paidClients) {
+  const container = document.getElementById('modal-paid-multi-rows');
+  container.innerHTML = '';
+  clients.forEach(name => {
+    const existingAmt = paidClients && paidClients[name] != null ? paidClients[name] : '';
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;';
+    row.innerHTML = `
+      <span style="min-width:90px;font-size:13px;color:#374151;">${escHtml(name)}</span>
+      <input type="number" data-client="${escHtml(name)}" placeholder="Amount (blank = not paid)"
+        min="0" step="1" value="${existingAmt}"
+        style="width:180px;border:1px solid #d1d5db;border-radius:6px;padding:5px 8px;font-size:13px;">
+    `;
+    container.appendChild(row);
+  });
 }
 
 function closeModal() {
@@ -3648,8 +3720,23 @@ async function saveModal() {
   const desc       = document.getElementById('modal-evt-desc').value.trim();
   const isTentative  = document.getElementById('modal-evt-tentative').checked;
   const isPaid       = document.getElementById('modal-evt-paid').checked;
-  const paidAmtRaw   = document.getElementById('modal-evt-paid-amount').value.trim();
-  const paidAmount   = isPaid && paidAmtRaw !== '' ? parseInt(paidAmtRaw) : null;
+  const _multiDiv    = document.getElementById('modal-paid-multi');
+  const _isMultiPaid = _multiDiv.dataset.active === '1';
+  let paidAmount = null;
+  let paidClients = null;
+  if (_isMultiPaid) {
+    if (isPaid) {
+      paidClients = {};
+      document.querySelectorAll('#modal-paid-multi-rows input[data-client]').forEach(inp => {
+        const v = inp.value.trim();
+        if (v !== '') paidClients[inp.dataset.client] = parseInt(v) || null;
+      });
+      if (Object.keys(paidClients).length === 0) paidClients = null;
+    }
+  } else {
+    const paidAmtRaw = document.getElementById('modal-evt-paid-amount').value.trim();
+    paidAmount = isPaid && paidAmtRaw !== '' ? parseInt(paidAmtRaw) : null;
+  }
   const calId      = document.getElementById('modal-evt-cal').value;
 
   if (!startVal || !endVal) { alert('Please set start and end times.'); return; }
@@ -3667,7 +3754,17 @@ async function saveModal() {
   }
 
   // Prepend metadata lines to description for persistence (readable in Google Calendar too)
-  const paidLine  = isPaid ? (paidAmount != null ? `Paid: ${paidAmount}` : 'Paid') : '';
+  let paidLine = '';
+  if (isPaid) {
+    if (paidClients && Object.keys(paidClients).length > 0) {
+      const entries = Object.entries(paidClients).map(([n, a]) => a != null ? `${n}=${a}` : n).join(', ');
+      paidLine = `Paid: ${entries}`;
+    } else if (!_isMultiPaid && paidAmount != null) {
+      paidLine = `Paid: ${paidAmount}`;
+    } else {
+      paidLine = 'Paid';
+    }
+  }
   const metaLines = [isTentative ? 'Tentative' : '', paidLine].filter(Boolean).join('\n');
   const fullDesc  = metaLines ? (desc ? `${metaLines}\n${desc}` : metaLines) : (desc || '');
   const body = {
@@ -3696,7 +3793,7 @@ async function saveModal() {
         title: created.summary || '(No title)',
         start: new Date(start), end: new Date(end),
         desc: desc, location: created.location || '',
-        isTentative, isPaid, paidAmount,
+        isTentative, isPaid, paidAmount, paidClients,
         meetLink: created.hangoutLink || '',
       });
     } else {
@@ -3722,7 +3819,7 @@ async function saveModal() {
           title: created.summary || '(No title)',
           start: new Date(cs), end: new Date(ce),
           desc: desc, location: created.location || '',
-          isTentative, isPaid, paidAmount,
+          isTentative, isPaid, paidAmount, paidClients,
           meetLink: created.hangoutLink || '',
         });
         if (modalPrevSnapshot) {
@@ -3742,7 +3839,7 @@ async function saveModal() {
             title: updated.summary || '(No title)',
             start: new Date(start), end: new Date(end),
             desc: desc, location: updated.location || '',
-            isTentative, isPaid, paidAmount,
+            isTentative, isPaid, paidAmount, paidClients,
             meetLink: modalEventRef.meetLink || '',
           };
         }
@@ -4548,6 +4645,41 @@ document.getElementById('settings-dark-mode').addEventListener('change', e => {
 document.getElementById('modal-save-btn').addEventListener('click', saveModal);
 document.getElementById('modal-delete-btn').addEventListener('click', deleteModal);
 document.getElementById('modal-cancel-btn').addEventListener('click', closeModal);
+
+// Re-evaluate paid UI when title changes (single ↔ multi-client switch)
+document.getElementById('modal-evt-title').addEventListener('input', () => {
+  const title      = document.getElementById('modal-evt-title').value;
+  const clients    = getClientsFromTitle(title);
+  const multiDiv   = document.getElementById('modal-paid-multi');
+  const isPaidNow  = document.getElementById('modal-evt-paid').checked;
+  if (clients) {
+    if (multiDiv.dataset.active !== '1') {
+      // Switching to multi — rebuild rows (no existing paid data yet)
+      document.getElementById('modal-evt-paid-amount').style.display = 'none';
+      document.getElementById('modal-evt-paid-amount').value = '';
+      multiDiv.dataset.active = '1';
+      buildMultiPaidRows(clients, null);
+      multiDiv.style.display = isPaidNow ? '' : 'none';
+    } else {
+      // Already multi — rebuild rows preserving existing amounts
+      const existingInputs = {};
+      document.querySelectorAll('#modal-paid-multi-rows input[data-client]').forEach(inp => {
+        existingInputs[inp.dataset.client] = inp.value;
+      });
+      buildMultiPaidRows(clients, Object.fromEntries(
+        Object.entries(existingInputs).map(([n, v]) => [n, v !== '' ? parseInt(v) : null])
+      ));
+    }
+  } else {
+    if (multiDiv.dataset.active === '1') {
+      // Switching back to single
+      multiDiv.dataset.active = '0';
+      multiDiv.style.display  = 'none';
+      document.getElementById('modal-paid-multi-rows').innerHTML = '';
+      document.getElementById('modal-evt-paid-amount').style.display = isPaidNow ? '' : 'none';
+    }
+  }
+});
 
 // Auto-sync end date when start changes: shift end by same delta to preserve duration
 document.getElementById('modal-evt-start').addEventListener('change', () => {
