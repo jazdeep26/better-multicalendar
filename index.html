@@ -1298,11 +1298,17 @@ body.dark .agenda-event-location { color: #666; }
     <div class="modal-row">
       <div>
         <label>Start</label>
-        <input type="datetime-local" id="modal-evt-start">
+        <div style="display:flex;gap:6px;">
+          <input type="date" id="modal-evt-start-date" style="flex:1;">
+          <input type="time" id="modal-evt-start-time" step="900" style="flex:0 0 auto;">
+        </div>
       </div>
       <div>
         <label>End</label>
-        <input type="datetime-local" id="modal-evt-end">
+        <div style="display:flex;gap:6px;">
+          <input type="date" id="modal-evt-end-date" style="flex:1;">
+          <input type="time" id="modal-evt-end-time" step="900" style="flex:0 0 auto;">
+        </div>
       </div>
     </div>
     <div>
@@ -3389,11 +3395,12 @@ function buildReminderMessage(clickedEv, dayDate, allDayEvents) {
     const ampm = h >= 12 ? 'PM' : 'AM';
     const h12  = pad(h % 12 || 12);
     const { therapyType } = parseEventTitle(ev.title);
-    const link = ev.meetLink ? ` ${ev.meetLink}` : '';
+    const link = ev.meetLink ? `\n${ev.meetLink}` : '';
     return `${h12}:${m} ${ampm} - ${therapyType}${link}`;
   }).join('\n');
 
-  return `Hi! ${childName}'s sessions ${whenWord}:\n\n${lines}\n\nSee you!`;
+  const firstName = childName.split(' ')[0];
+  return `Hi! ${firstName}'s sessions ${whenWord}:\n\n${lines}\n\nSee you!`;
 }
 
 async function copyToClipboard(btn, text) {
@@ -3515,7 +3522,7 @@ async function saveCloneModal() {
     return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00${sign}${pad(Math.floor(Math.abs(off)/60))}:${pad(Math.abs(off)%60)}`;
   }
 
-  const tentPrefix = desc => ev.isTentative ? (desc ? `Tentative\n${desc}` : 'Tentative') : (desc || '');
+  const tentPrefix = desc => buildFullDesc(ev, desc);
 
   const saveBtn = document.getElementById('clone-save-btn');
   saveBtn.disabled = true;
@@ -3541,7 +3548,8 @@ async function saveCloneModal() {
       title: created.summary || '(No title)',
       start: new Date(cs), end: new Date(ce),
       desc: cloneDesc, location: ev.location || '',
-      isTentative: ev.isTentative,
+      isTentative: ev.isTentative, isPaid: ev.isPaid,
+      paidAmount: ev.paidAmount, paidClients: ev.paidClients,
       meetLink: created.hangoutLink || '',
     });
 
@@ -3572,6 +3580,19 @@ document.getElementById('clone-backdrop').addEventListener('click', e => {
 function toLocalDatetimeValue(d) {
   const pad = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function setModalDateTime(prefix, d) {
+  const pad = n => String(n).padStart(2, '0');
+  document.getElementById(`modal-evt-${prefix}-date`).value =
+    `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  document.getElementById(`modal-evt-${prefix}-time`).value =
+    `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function getModalDateTime(prefix) {
+  const dv = document.getElementById(`modal-evt-${prefix}-date`).value;
+  const tv = document.getElementById(`modal-evt-${prefix}-time`).value;
+  if (!dv || !tv) return '';
+  return `${dv}T${tv}`;
 }
 
 function populateCalSelect(selectedCalId) {
@@ -3617,8 +3638,8 @@ function openEditModal(ev) {
     end: new Date(ev.end), desc: ev.desc || '', location: ev.location || '', isTentative: !!ev.isTentative, meetLink: ev.meetLink || '' };
   document.getElementById('modal-title').textContent = 'Edit Event';
   document.getElementById('modal-evt-title').value    = ev.title === '(No title)' ? '' : ev.title;
-  document.getElementById('modal-evt-start').value   = toLocalDatetimeValue(ev.start);
-  document.getElementById('modal-evt-end').value     = toLocalDatetimeValue(ev.end);
+  setModalDateTime('start', ev.start);
+  setModalDateTime('end',   ev.end);
   document.getElementById('modal-evt-location').value   = ev.location || '';
   document.getElementById('modal-evt-desc').value       = ev.desc || '';
   document.getElementById('modal-evt-tentative').checked = !!ev.isTentative;
@@ -3639,7 +3660,7 @@ function openEditModal(ev) {
     document.getElementById('modal-evt-paid-amount').style.display = ev.isPaid ? '' : 'none';
   }
   document.getElementById('modal-delete-btn').style.display = permissions.delete ? '' : 'none';
-  modalPrevStartVal = toLocalDatetimeValue(ev.start);
+  modalPrevStartVal = getModalDateTime('start');
   populateCalSelect(ev.calId);
   setupModalMeetLink(ev.meetLink || '');
   document.getElementById('modal-backdrop').classList.add('open');
@@ -3651,8 +3672,8 @@ function openCreateModal(calId, startDate, endDate) {
   modalPrevSnapshot = null;
   document.getElementById('modal-title').textContent = 'New Event';
   document.getElementById('modal-evt-title').value    = '';
-  document.getElementById('modal-evt-start').value   = toLocalDatetimeValue(startDate);
-  document.getElementById('modal-evt-end').value     = toLocalDatetimeValue(endDate);
+  setModalDateTime('start', startDate);
+  setModalDateTime('end',   endDate);
   document.getElementById('modal-evt-location').value   = '';
   document.getElementById('modal-evt-desc').value       = '';
   document.getElementById('modal-evt-tentative').checked = false;
@@ -3664,7 +3685,7 @@ function openCreateModal(calId, startDate, endDate) {
   _createMultiDiv.style.display  = 'none';
   document.getElementById('modal-paid-multi-rows').innerHTML = '';
   document.getElementById('modal-delete-btn').style.display = 'none';
-  modalPrevStartVal = toLocalDatetimeValue(startDate);
+  modalPrevStartVal = getModalDateTime('start');
   populateCalSelect(calId);
   setupModalMeetLink('');
   document.getElementById('modal-backdrop').classList.add('open');
@@ -3714,8 +3735,8 @@ function closeModal() {
 
 async function saveModal() {
   const title    = document.getElementById('modal-evt-title').value.trim() || '(No title)';
-  const startVal = document.getElementById('modal-evt-start').value;
-  const endVal   = document.getElementById('modal-evt-end').value;
+  const startVal = getModalDateTime('start');
+  const endVal   = getModalDateTime('end');
   const location   = document.getElementById('modal-evt-location').value.trim();
   const desc       = document.getElementById('modal-evt-desc').value.trim();
   const isTentative  = document.getElementById('modal-evt-tentative').checked;
@@ -4534,7 +4555,7 @@ async function handleDragEnd(clientX, clientY) {
     try {
       const body = {
         summary:     ev.title,
-        description: ev.desc || '',
+        description: buildFullDesc(ev),
         location:    ev.location || '',
         start: { dateTime: toOffsetISO(newStart) },
         end:   { dateTime: toOffsetISO(newEnd) },
@@ -4550,7 +4571,9 @@ async function handleDragEnd(clientX, clientY) {
         title: created.summary || ev.title,
         start: new Date(cs), end: new Date(ce),
         desc: ev.desc || '', location: ev.location || '',
-        isTentative: false, meetLink: '',
+        isTentative: ev.isTentative, isPaid: ev.isPaid,
+        paidAmount: ev.paidAmount, paidClients: ev.paidClients,
+        meetLink: '',
       };
       if (!cachedEvents[targetCalId]) cachedEvents[targetCalId] = [];
       cachedEvents[targetCalId].push(newEvObj);
@@ -4573,7 +4596,7 @@ async function handleDragEnd(clientX, clientY) {
     // Cross-calendar move: create in target, delete from source
     try {
       const body = {
-        summary: ev.title, description: ev.desc || '', location: ev.location || '',
+        summary: ev.title, description: buildFullDesc(ev), location: ev.location || '',
         start: { dateTime: toOffsetISO(newStart) }, end: { dateTime: toOffsetISO(newEnd) },
       };
       const created = await apiWrite('POST',
@@ -4585,7 +4608,9 @@ async function handleDragEnd(clientX, clientY) {
       const ce = created.end?.dateTime   || created.end?.date;
       const newEvObj = { id: created.id, calId: targetCalId, title: created.summary || ev.title,
         start: new Date(cs), end: new Date(ce), desc: ev.desc || '', location: ev.location || '',
-        isTentative: ev.isTentative, meetLink: ev.meetLink || '' };
+        isTentative: ev.isTentative, isPaid: ev.isPaid,
+        paidAmount: ev.paidAmount, paidClients: ev.paidClients,
+        meetLink: ev.meetLink || '' };
       if (!cachedEvents[targetCalId]) cachedEvents[targetCalId] = [];
       cachedEvents[targetCalId].push(newEvObj);
       pushUndo({ type: 'move-cal', evId: created.id, calId: targetCalId,
@@ -4623,6 +4648,24 @@ document.addEventListener('touchend', e => {
   if (!dragState) return;
   handleDragEnd(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
 });
+
+// Rebuild full description with Tentative/Paid prefixes from a parsed event object
+function buildFullDesc(ev, cleanDesc) {
+  const base = cleanDesc !== undefined ? cleanDesc : (ev.desc || '');
+  let paidLine = '';
+  if (ev.isPaid) {
+    if (ev.paidClients && Object.keys(ev.paidClients).length > 0) {
+      const entries = Object.entries(ev.paidClients).map(([n, a]) => a != null ? `${n}=${a}` : n).join(', ');
+      paidLine = `Paid: ${entries}`;
+    } else if (ev.paidAmount != null) {
+      paidLine = `Paid: ${ev.paidAmount}`;
+    } else {
+      paidLine = 'Paid';
+    }
+  }
+  const metaLines = [ev.isTentative ? 'Tentative' : '', paidLine].filter(Boolean).join('\n');
+  return metaLines ? (base ? `${metaLines}\n${base}` : metaLines) : base;
+}
 
 function minsToTimeStr(mins) {
   const h = Math.floor(mins / 60) + START_HOUR;
@@ -4682,17 +4725,19 @@ document.getElementById('modal-evt-title').addEventListener('input', () => {
 });
 
 // Auto-sync end date when start changes: shift end by same delta to preserve duration
-document.getElementById('modal-evt-start').addEventListener('change', () => {
-  const startEl = document.getElementById('modal-evt-start');
-  const endEl   = document.getElementById('modal-evt-end');
-  if (!startEl.value || !endEl.value || !modalPrevStartVal) { modalPrevStartVal = startEl.value; return; }
-  const delta = new Date(startEl.value) - new Date(modalPrevStartVal);
+function syncEndOnStartChange() {
+  const sv = getModalDateTime('start');
+  const ev = getModalDateTime('end');
+  if (!sv || !ev || !modalPrevStartVal) { modalPrevStartVal = sv; return; }
+  const delta = new Date(sv) - new Date(modalPrevStartVal);
   if (delta !== 0) {
-    const newEnd = new Date(new Date(endEl.value).getTime() + delta);
-    endEl.value = toLocalDatetimeValue(newEnd);
+    const newEnd = new Date(new Date(ev).getTime() + delta);
+    setModalDateTime('end', newEnd);
   }
-  modalPrevStartVal = startEl.value;
-});
+  modalPrevStartVal = sv;
+}
+document.getElementById('modal-evt-start-date').addEventListener('change', syncEndOnStartChange);
+document.getElementById('modal-evt-start-time').addEventListener('change', syncEndOnStartChange);
 document.getElementById('modal-backdrop').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
