@@ -575,6 +575,37 @@ body.dark .modal input,
 body.dark .modal textarea,
 body.dark .modal select { background: #0f3460; border-color: #2a2a4a; color: #e0e0e0; }
 .modal textarea { resize: vertical; min-height: 60px; }
+/* ── Custom time picker ── */
+.tp-wrap { position: relative; }
+.tp-btn {
+  width: 100%; text-align: left;
+  border: 1px solid #ddd; border-radius: 6px;
+  padding: 7px 28px 7px 10px;
+  font-size: 13px; font-family: inherit;
+  background: #fff; color: #1a1a1a;
+  cursor: pointer; position: relative;
+}
+.tp-btn::after { content: '▾'; position: absolute; right: 10px; top: 50%; transform: translateY(-50%); opacity: .55; }
+.tp-panel {
+  display: none; position: absolute; top: calc(100% + 4px); left: 0;
+  width: 100%; min-width: 170px;
+  background: #fff; border: 1px solid #ddd; border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.15);
+  height: calc(5 * 36px); overflow-y: scroll;
+  z-index: 2000; scrollbar-width: none;
+}
+.tp-panel::-webkit-scrollbar { display: none; }
+.tp-panel.open { display: block; }
+.tp-item {
+  height: 36px; line-height: 36px;
+  padding: 0 12px; font-size: 13px; white-space: nowrap; cursor: pointer;
+}
+.tp-item:hover { background: #f3f4f6; }
+.tp-item.tp-selected { font-weight: 700; background: #e8f0fe; color: #1a73e8; }
+body.dark .tp-btn { background: #0f3460; border-color: #2a2a4a; color: #e0e0e0; }
+body.dark .tp-panel { background: #0f3460; border-color: #2a2a4a; }
+body.dark .tp-item:hover { background: #16316a; }
+body.dark .tp-item.tp-selected { background: #1a3a6a; color: #8ab4f8; }
 .modal-row { display: flex; gap: 10px; }
 .modal-row > div { flex: 1; }
 .modal-actions { display: flex; gap: 8px; margin-top: 4px; }
@@ -1298,17 +1329,13 @@ body.dark .agenda-event-location { color: #666; }
     <div class="modal-row">
       <div>
         <label>Start</label>
-        <div style="display:flex;gap:6px;">
-          <input type="date" id="modal-evt-start-date" style="flex:1;">
-          <select id="modal-evt-start-time" style="flex:0 0 auto;"></select>
-        </div>
+        <input type="date" id="modal-evt-start-date" style="margin-bottom:6px;">
+        <div class="tp-wrap" id="tp-start"></div>
       </div>
       <div>
         <label>End</label>
-        <div style="display:flex;gap:6px;">
-          <input type="date" id="modal-evt-end-date" style="flex:1;">
-          <select id="modal-evt-end-time" style="flex:0 0 auto;min-width:160px;"></select>
-        </div>
+        <input type="date" id="modal-evt-end-date" style="margin-bottom:6px;">
+        <div class="tp-wrap" id="tp-end"></div>
       </div>
     </div>
     <div>
@@ -3581,9 +3608,11 @@ function toLocalDatetimeValue(d) {
   const pad = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+// ── Custom time picker ─────────────────────────────────────────────────────
+const _tp = {};  // id → { value, options }
+function _tpH(h) { const a = h>=12?'PM':'AM', h12=h%12||12; return `${h12}`; }
 function _timeLabel(h, m) {
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  const h12  = h % 12 || 12;
+  const ampm = h >= 12 ? 'PM' : 'AM', h12 = h % 12 || 12;
   return `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
 }
 function _tv(h, m) { return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`; }
@@ -3595,25 +3624,84 @@ function _fmtDur(mins) {
   if (m===0) return `${h} hr`;
   return `${h} hr ${m} min`;
 }
-function populateStartTimeSelect(selectedTV) {
-  const sel = document.getElementById('modal-evt-start-time');
-  let html = '';
+function _tpBuild(id, opts, selVal) {
+  // opts: [{v, label}]
+  const wrap = document.getElementById(id);
+  if (!wrap) return;
+  _tp[id] = { value: selVal, opts };
+  const selOpt = opts.find(o => o.v === selVal);
+  wrap.innerHTML = `
+    <button type="button" class="tp-btn" id="${id}-btn">${selOpt?.label || selVal}</button>
+    <div class="tp-panel" id="${id}-panel">
+      ${opts.map(o => `<div class="tp-item${o.v===selVal?' tp-selected':''}" data-v="${o.v}">${o.label}</div>`).join('')}
+    </div>`;
+  document.getElementById(`${id}-btn`).addEventListener('click', e => {
+    e.stopPropagation(); _tpToggle(id);
+  });
+  wrap.querySelectorAll('.tp-item').forEach(el =>
+    el.addEventListener('click', e => { e.stopPropagation(); _tpPick(id, el.dataset.v); })
+  );
+}
+function _tpToggle(id) {
+  const panel = document.getElementById(`${id}-panel`);
+  if (!panel) return;
+  const opening = !panel.classList.contains('open');
+  // close all
+  document.querySelectorAll('.tp-panel.open').forEach(p => p.classList.remove('open'));
+  if (opening) {
+    panel.classList.add('open');
+    // scroll selected to middle (item 3 of 5)
+    const sel = panel.querySelector('.tp-selected');
+    if (sel) panel.scrollTop = sel.offsetTop - 36 * 2;
+  }
+}
+function _tpPick(id, val) {
+  if (!_tp[id]) return;
+  _tp[id].value = val;
+  const panel = document.getElementById(`${id}-panel`);
+  const btn   = document.getElementById(`${id}-btn`);
+  panel.querySelectorAll('.tp-item').forEach(el =>
+    el.classList.toggle('tp-selected', el.dataset.v === val)
+  );
+  panel.classList.remove('open');
+  const selOpt = _tp[id].opts.find(o => o.v === val);
+  if (btn) btn.textContent = selOpt?.label || val;
+  if (id === 'tp-start') {
+    // rebuild end picker with updated durations, preserve duration
+    const endVal = _tp['tp-end']?.value || '';
+    const sm = _tvToMins(val), em = _tvToMins(endVal);
+    const dur = em > sm ? em - sm : em + 1440 - sm;
+    const newEndMins = (sm + dur) % 1440;
+    const newEndTV = _tv(Math.floor(newEndMins/60), newEndMins%60);
+    _tpBuildEnd(val, newEndTV);
+    // update end date if crosses midnight
+    const startDv = document.getElementById('modal-evt-start-date').value;
+    if (startDv && newEndMins < sm) {
+      const [y,mo,d] = startDv.split('-').map(Number);
+      const next = new Date(y, mo-1, d+1);
+      const pad = n => String(n).padStart(2,'0');
+      document.getElementById('modal-evt-end-date').value =
+        `${next.getFullYear()}-${pad(next.getMonth()+1)}-${pad(next.getDate())}`;
+    } else if (startDv) {
+      document.getElementById('modal-evt-end-date').value = startDv;
+    }
+  }
+  modalPrevStartVal = getModalDateTime('start');
+}
+function _tpBuildStart(selTV) {
+  const opts = [];
+  for (let h=0;h<24;h++) for (let m=0;m<60;m+=15)
+    opts.push({ v: _tv(h,m), label: _timeLabel(h,m) });
+  _tpBuild('tp-start', opts, selTV);
+}
+function _tpBuildEnd(startTV, selTV) {
+  const sm   = _tvToMins(startTV);
+  const opts = [];
   for (let h=0;h<24;h++) for (let m=0;m<60;m+=15) {
     const v = _tv(h,m);
-    html += `<option value="${v}"${v===selectedTV?' selected':''}>${_timeLabel(h,m)}</option>`;
+    opts.push({ v, label: `${_timeLabel(h,m)} (${_fmtDur(_tvToMins(v) - sm)})` });
   }
-  sel.innerHTML = html;
-}
-function populateEndTimeSelect(startTV, selectedTV) {
-  const sel = document.getElementById('modal-evt-end-time');
-  const sm  = _tvToMins(startTV);
-  let html  = '';
-  for (let h=0;h<24;h++) for (let m=0;m<60;m+=15) {
-    const v    = _tv(h,m);
-    const dur  = _fmtDur(_tvToMins(v) - sm);
-    html += `<option value="${v}"${v===selectedTV?' selected':''}>${_timeLabel(h,m)} (${dur})</option>`;
-  }
-  sel.innerHTML = html;
+  _tpBuild('tp-end', opts, selTV);
 }
 function initModalDateTimes(startD, endD) {
   const pad = n => String(n).padStart(2,'0');
@@ -3623,12 +3711,12 @@ function initModalDateTimes(startD, endD) {
     `${endD.getFullYear()}-${pad(endD.getMonth()+1)}-${pad(endD.getDate())}`;
   const startTV = _tv(startD.getHours(), startD.getMinutes());
   const endTV   = _tv(endD.getHours(),   endD.getMinutes());
-  populateStartTimeSelect(startTV);
-  populateEndTimeSelect(startTV, endTV);
+  _tpBuildStart(startTV);
+  _tpBuildEnd(startTV, endTV);
 }
 function getModalDateTime(prefix) {
   const dv = document.getElementById(`modal-evt-${prefix}-date`).value;
-  const tv = document.getElementById(`modal-evt-${prefix}-time`).value;
+  const tv = prefix === 'start' ? _tp['tp-start']?.value : _tp['tp-end']?.value;
   if (!dv || !tv) return '';
   return `${dv}T${tv}`;
 }
@@ -4761,29 +4849,24 @@ document.getElementById('modal-evt-title').addEventListener('input', () => {
 });
 
 // Auto-sync end date when start changes: shift end by same delta to preserve duration
-function syncEndOnStartChange() {
-  const sv      = getModalDateTime('start');
-  const ev      = getModalDateTime('end');
-  const startTV = document.getElementById('modal-evt-start-time').value;
-  if (!sv || !ev || !modalPrevStartVal) {
-    modalPrevStartVal = sv;
-    populateEndTimeSelect(startTV, document.getElementById('modal-evt-end-time').value);
-    return;
-  }
+// Close time pickers when clicking outside
+document.addEventListener('click', () =>
+  document.querySelectorAll('.tp-panel.open').forEach(p => p.classList.remove('open'))
+);
+// When start date changes, shift end date by same delta and update modalPrevStartVal
+document.getElementById('modal-evt-start-date').addEventListener('change', () => {
+  const sv = getModalDateTime('start');
+  const ev = getModalDateTime('end');
+  if (!sv || !ev || !modalPrevStartVal) { modalPrevStartVal = sv; return; }
   const delta = new Date(sv) - new Date(modalPrevStartVal);
-  let endTV = document.getElementById('modal-evt-end-time').value;
   if (delta !== 0) {
     const newEnd = new Date(new Date(ev).getTime() + delta);
     const pad = n => String(n).padStart(2,'0');
     document.getElementById('modal-evt-end-date').value =
       `${newEnd.getFullYear()}-${pad(newEnd.getMonth()+1)}-${pad(newEnd.getDate())}`;
-    endTV = _tv(newEnd.getHours(), newEnd.getMinutes());
   }
-  populateEndTimeSelect(startTV, endTV);
   modalPrevStartVal = sv;
-}
-document.getElementById('modal-evt-start-date').addEventListener('change', syncEndOnStartChange);
-document.getElementById('modal-evt-start-time').addEventListener('change', syncEndOnStartChange);
+});
 document.getElementById('modal-backdrop').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
