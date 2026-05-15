@@ -1300,14 +1300,14 @@ body.dark .agenda-event-location { color: #666; }
         <label>Start</label>
         <div style="display:flex;gap:6px;">
           <input type="date" id="modal-evt-start-date" style="flex:1;">
-          <input type="time" id="modal-evt-start-time" step="900" style="flex:0 0 auto;">
+          <select id="modal-evt-start-time" style="flex:0 0 auto;"></select>
         </div>
       </div>
       <div>
         <label>End</label>
         <div style="display:flex;gap:6px;">
           <input type="date" id="modal-evt-end-date" style="flex:1;">
-          <input type="time" id="modal-evt-end-time" step="900" style="flex:0 0 auto;">
+          <select id="modal-evt-end-time" style="flex:0 0 auto;min-width:160px;"></select>
         </div>
       </div>
     </div>
@@ -3581,12 +3581,50 @@ function toLocalDatetimeValue(d) {
   const pad = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
-function setModalDateTime(prefix, d) {
-  const pad = n => String(n).padStart(2, '0');
-  document.getElementById(`modal-evt-${prefix}-date`).value =
-    `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-  document.getElementById(`modal-evt-${prefix}-time`).value =
-    `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+function _timeLabel(h, m) {
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12  = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
+}
+function _tv(h, m) { return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`; }
+function _tvToMins(tv) { const [h,m] = tv.split(':').map(Number); return h*60+m; }
+function _fmtDur(mins) {
+  if (mins <= 0) mins += 1440;
+  const h = Math.floor(mins/60), m = mins%60;
+  if (h===0) return `${m} min`;
+  if (m===0) return `${h} hr`;
+  return `${h} hr ${m} min`;
+}
+function populateStartTimeSelect(selectedTV) {
+  const sel = document.getElementById('modal-evt-start-time');
+  let html = '';
+  for (let h=0;h<24;h++) for (let m=0;m<60;m+=15) {
+    const v = _tv(h,m);
+    html += `<option value="${v}"${v===selectedTV?' selected':''}>${_timeLabel(h,m)}</option>`;
+  }
+  sel.innerHTML = html;
+}
+function populateEndTimeSelect(startTV, selectedTV) {
+  const sel = document.getElementById('modal-evt-end-time');
+  const sm  = _tvToMins(startTV);
+  let html  = '';
+  for (let h=0;h<24;h++) for (let m=0;m<60;m+=15) {
+    const v    = _tv(h,m);
+    const dur  = _fmtDur(_tvToMins(v) - sm);
+    html += `<option value="${v}"${v===selectedTV?' selected':''}>${_timeLabel(h,m)} (${dur})</option>`;
+  }
+  sel.innerHTML = html;
+}
+function initModalDateTimes(startD, endD) {
+  const pad = n => String(n).padStart(2,'0');
+  document.getElementById('modal-evt-start-date').value =
+    `${startD.getFullYear()}-${pad(startD.getMonth()+1)}-${pad(startD.getDate())}`;
+  document.getElementById('modal-evt-end-date').value =
+    `${endD.getFullYear()}-${pad(endD.getMonth()+1)}-${pad(endD.getDate())}`;
+  const startTV = _tv(startD.getHours(), startD.getMinutes());
+  const endTV   = _tv(endD.getHours(),   endD.getMinutes());
+  populateStartTimeSelect(startTV);
+  populateEndTimeSelect(startTV, endTV);
 }
 function getModalDateTime(prefix) {
   const dv = document.getElementById(`modal-evt-${prefix}-date`).value;
@@ -3638,8 +3676,7 @@ function openEditModal(ev) {
     end: new Date(ev.end), desc: ev.desc || '', location: ev.location || '', isTentative: !!ev.isTentative, meetLink: ev.meetLink || '' };
   document.getElementById('modal-title').textContent = 'Edit Event';
   document.getElementById('modal-evt-title').value    = ev.title === '(No title)' ? '' : ev.title;
-  setModalDateTime('start', ev.start);
-  setModalDateTime('end',   ev.end);
+  initModalDateTimes(ev.start, ev.end);
   document.getElementById('modal-evt-location').value   = ev.location || '';
   document.getElementById('modal-evt-desc').value       = ev.desc || '';
   document.getElementById('modal-evt-tentative').checked = !!ev.isTentative;
@@ -3672,8 +3709,7 @@ function openCreateModal(calId, startDate, endDate) {
   modalPrevSnapshot = null;
   document.getElementById('modal-title').textContent = 'New Event';
   document.getElementById('modal-evt-title').value    = '';
-  setModalDateTime('start', startDate);
-  setModalDateTime('end',   endDate);
+  initModalDateTimes(startDate, endDate);
   document.getElementById('modal-evt-location').value   = '';
   document.getElementById('modal-evt-desc').value       = '';
   document.getElementById('modal-evt-tentative').checked = false;
@@ -4726,14 +4762,24 @@ document.getElementById('modal-evt-title').addEventListener('input', () => {
 
 // Auto-sync end date when start changes: shift end by same delta to preserve duration
 function syncEndOnStartChange() {
-  const sv = getModalDateTime('start');
-  const ev = getModalDateTime('end');
-  if (!sv || !ev || !modalPrevStartVal) { modalPrevStartVal = sv; return; }
+  const sv      = getModalDateTime('start');
+  const ev      = getModalDateTime('end');
+  const startTV = document.getElementById('modal-evt-start-time').value;
+  if (!sv || !ev || !modalPrevStartVal) {
+    modalPrevStartVal = sv;
+    populateEndTimeSelect(startTV, document.getElementById('modal-evt-end-time').value);
+    return;
+  }
   const delta = new Date(sv) - new Date(modalPrevStartVal);
+  let endTV = document.getElementById('modal-evt-end-time').value;
   if (delta !== 0) {
     const newEnd = new Date(new Date(ev).getTime() + delta);
-    setModalDateTime('end', newEnd);
+    const pad = n => String(n).padStart(2,'0');
+    document.getElementById('modal-evt-end-date').value =
+      `${newEnd.getFullYear()}-${pad(newEnd.getMonth()+1)}-${pad(newEnd.getDate())}`;
+    endTV = _tv(newEnd.getHours(), newEnd.getMinutes());
   }
+  populateEndTimeSelect(startTV, endTV);
   modalPrevStartVal = sv;
 }
 document.getElementById('modal-evt-start-date').addEventListener('change', syncEndOnStartChange);
