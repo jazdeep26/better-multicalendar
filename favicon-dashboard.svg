@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1B3A5C"/>
+      <stop offset="100%" stop-color="#0E1F33"/>
+    </linearGradient>
+    <linearGradient id="bar1" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#5BA3E0"/>
+      <stop offset="100%" stop-color="#7FD3FF"/>
+    </linearGradient>
+    <linearGradient id="bar2" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#3FAE6B"/>
+      <stop offset="100%" stop-color="#5FE39A"/>
+    </linearGradient>
+    <linearGradient id="bar3" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#E89B5A"/>
+      <stop offset="100%" stop-color="#FFC787"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- background -->
+  <rect x="8" y="8" width="176" height="176" rx="40" fill="url(#bg)"/>
+
+  <!-- baseline -->
+  <line x1="32" y1="148" x2="160" y2="148" stroke="#7FD3FF" stroke-width="3" stroke-linecap="round" opacity="0.4"/>
+
+  <!-- bars ascending -->
+  <rect x="40" y="104" width="26" height="44" rx="5" fill="url(#bar1)" filter="url(#glow)"/>
+  <rect x="76" y="76"  width="26" height="72" rx="5" fill="url(#bar2)" filter="url(#glow)"/>
+  <rect x="112" y="48" width="26" height="100" rx="5" fill="url(#bar3)" filter="url(#glow)"/>
+
+  <!-- trend line -->
+  <polyline points="53,104 89,76 125,48" stroke="#FFFFFF" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
+  <circle cx="53" cy="104" r="4" fill="#FFFFFF"/>
+  <circle cx="89" cy="76" r="4" fill="#FFFFFF"/>
+  <circle cx="125" cy="48" r="5" fill="#FFFFFF"/>
+
+  <!-- arrow tip -->
+  <polygon points="125,42 140,48 125,54" fill="#FFFFFF"/>
+</svg>
