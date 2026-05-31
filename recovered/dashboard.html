@@ -1,0 +1,3319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Capybara Care — Revenue Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --green-dark:  #2d6a4f;
+      --green-mid:   #40916c;
+      --green-light: #74c69d;
+      --green-pale:  #d8f3dc;
+      --green-bg:    #f0faf4;
+      --white:       #ffffff;
+      --gray-50:     #f9fafb;
+      --gray-100:    #f3f4f6;
+      --gray-200:    #e5e7eb;
+      --gray-400:    #9ca3af;
+      --gray-600:    #4b5563;
+      --gray-800:    #1f2937;
+      --danger:      #dc2626;
+      --danger-bg:   #fff1f1;
+      --warning:     #d97706;
+      --shadow-sm:   0 1px 3px rgba(0,0,0,.08);
+      --radius:      12px;
+    }
+
+    body { font-family: 'Inter', sans-serif; background: var(--green-bg); color: var(--gray-800); min-height: 100vh; }
+
+    /* ── Monthly Trend toolbar ── */
+    .monthly-trend-toolbar {
+      display: flex; align-items: center; gap: 16px;
+      margin-bottom: 16px; padding-top: 4px;
+    }
+    .trend-toggle { display: flex; gap: 0; border: 1px solid var(--gray-200); border-radius: 8px; overflow: hidden; }
+    .trend-btn {
+      padding: 7px 18px; font-size: 13px; font-weight: 600;
+      color: var(--gray-600); background: var(--white); border: none; cursor: pointer;
+      font-family: inherit; transition: background .15s, color .15s;
+    }
+    .trend-btn + .trend-btn { border-left: 1px solid var(--gray-200); }
+    .trend-btn.active { background: var(--green-mid); color: var(--white); }
+    .trend-hint { font-size: 12px; color: var(--gray-400); }
+
+    /* ── Trend stat pills ── */
+    .trend-stats {
+      display: flex; gap: 12px; margin-bottom: 14px; flex-wrap: wrap;
+    }
+    .trend-stat {
+      background: var(--white); border-radius: 8px;
+      padding: 10px 18px; box-shadow: var(--shadow-sm);
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .trend-stat-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--gray-400); }
+    .trend-stat-value { font-size: 20px; font-weight: 700; color: var(--gray-800); }
+
+    /* ── Header ── */
+    header {
+      background: var(--white);
+      border-bottom: 2px solid var(--green-pale);
+      padding: 12px 32px;
+      display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; z-index: 100;
+      box-shadow: var(--shadow-sm);
+    }
+    .header-left { display: flex; align-items: center; gap: 14px; }
+    header img.logo { height: 46px; width: auto; object-fit: contain; }
+    .header-title { display: flex; flex-direction: column; }
+    .header-title .brand { font-size: 17px; font-weight: 700; color: var(--green-dark); letter-spacing: -.3px; }
+    .header-title .sub   { font-size: 11px; color: var(--gray-400); font-weight: 500; text-transform: uppercase; letter-spacing: .5px; }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+    #last-updated { font-size: 12px; color: var(--gray-400); }
+    #refresh-btn {
+      background: var(--green-mid); color: var(--white);
+      border: none; border-radius: 8px; padding: 7px 14px;
+      font-size: 13px; font-weight: 600; cursor: pointer; transition: background .2s;
+    }
+    #refresh-btn:hover { background: var(--green-dark); }
+
+    /* ── Filters bar ── */
+    .filters-bar {
+      background: var(--white); border-bottom: 1px solid var(--gray-200);
+      padding: 10px 32px; display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
+    }
+    .filter-group { display: flex; align-items: center; gap: 8px; }
+    .filter-group label { font-size: 13px; font-weight: 500; color: var(--gray-600); }
+    .filter-group select {
+      border: 1px solid var(--gray-200); border-radius: 8px; padding: 5px 10px;
+      font-size: 13px; font-family: inherit; color: var(--gray-800);
+      background: var(--white); cursor: pointer; outline: none; transition: border-color .2s;
+    }
+    .filter-group select:focus { border-color: var(--green-mid); }
+
+    /* ── Tab nav ── */
+    .tab-nav {
+      background: var(--white); border-bottom: 1px solid var(--gray-200);
+      padding: 0 32px; display: flex; gap: 0;
+    }
+    .tab-btn {
+      padding: 13px 22px; font-size: 14px; font-weight: 600;
+      color: var(--gray-400); background: none; border: none;
+      border-bottom: 3px solid transparent; cursor: pointer;
+      font-family: inherit; transition: color .15s, border-color .15s;
+      margin-bottom: -1px;
+    }
+    .tab-btn:hover { color: var(--green-mid); }
+    .tab-btn.active { color: var(--green-dark); border-bottom-color: var(--green-mid); }
+
+    /* ── Tab panels ── */
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Main layout ── */
+    main { 
+      /* max-width: 1400px;  */
+      margin: 0 auto; 
+      padding: 24px 32px 48px; 
+    }
+
+    /* ── KPI grid ── */
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-bottom: 24px; }
+    .kpi-card {
+      background: var(--white); border-radius: var(--radius);
+      padding: 18px 20px; box-shadow: var(--shadow-sm);
+      border-left: 4px solid var(--green-mid);
+      display: flex; flex-direction: column; gap: 5px;
+    }
+    .kpi-card.c1 { border-left-color: #1b4332; }
+    .kpi-card.c2 { border-left-color: #2d6a4f; }
+    .kpi-card.c3 { border-left-color: #40916c; }
+    .kpi-card.c4 { border-left-color: #52b788; }
+    .kpi-card.c5 { border-left-color: #74c69d; }
+    .kpi-card.c6 { border-left-color: #95d5b2; }
+    .kpi-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--gray-400); }
+    .kpi-value { font-size: 26px; font-weight: 700; color: var(--gray-800); line-height: 1.1; cursor: default; }
+    .kpi-sub   { font-size: 11px; color: var(--gray-400); }
+
+    /* ── Charts grid ── */
+    .charts-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 18px; margin-bottom: 24px; }
+    .chart-card { background: var(--white); border-radius: var(--radius); padding: 20px 22px; box-shadow: var(--shadow-sm); }
+    .chart-card.full { grid-column: 1/-1; }
+    .chart-title { font-size: 14px; font-weight: 600; color: var(--gray-800); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .chart-title .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green-mid); flex-shrink: 0; }
+    .chart-wrap { position: relative; height: 260px; }
+    .chart-wrap.tall { height: 320px; }
+
+    /* ── Table ── */
+    .table-card { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow-sm); overflow: hidden; }
+    .table-header {
+      padding: 16px 20px; border-bottom: 1px solid var(--gray-200);
+      display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+    }
+    .table-header h3 { font-size: 14px; font-weight: 600; }
+    .table-search {
+      border: 1px solid var(--gray-200); border-radius: 8px; padding: 6px 12px;
+      font-size: 13px; font-family: inherit; outline: none; width: 200px; transition: border-color .2s;
+    }
+    .table-search:focus { border-color: var(--green-mid); }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th {
+      background: var(--gray-50); padding: 9px 14px;
+      text-align: left; font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .5px; color: var(--gray-600);
+      border-bottom: 1px solid var(--gray-200); white-space: nowrap; cursor: pointer; user-select: none;
+    }
+    thead th:hover { color: var(--green-dark); }
+    thead th.sort-asc::after  { content: ' ▲'; font-size: 9px; }
+    thead th.sort-desc::after { content: ' ▼'; font-size: 9px; }
+    tbody tr { border-bottom: 1px solid var(--gray-100); transition: background .1s; }
+    tbody tr:hover { background: var(--green-bg); }
+    tbody td { padding: 9px 14px; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+    .badge-green  { background: var(--green-pale); color: var(--green-dark); }
+    .badge-red    { background: #fee2e2; color: var(--danger); }
+    .badge-orange { background: #fef3c7; color: var(--warning); }
+    .pagination {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; padding: 10px 18px; border-top: 1px solid var(--gray-100); flex-wrap: wrap;
+    }
+    .pagination-right { display: flex; align-items: center; gap: 8px; }
+    .pagination button {
+      background: var(--white); border: 1px solid var(--gray-200); border-radius: 6px;
+      padding: 5px 12px; font-size: 12px; cursor: pointer; font-family: inherit; transition: all .15s;
+    }
+    .pagination button:hover:not(:disabled) { background: var(--green-pale); border-color: var(--green-mid); }
+    .pagination button:disabled { opacity: .4; cursor: default; }
+    .pagination span { font-size: 12px; color: var(--gray-400); }
+    .page-size-group { display: flex; align-items: center; gap: 6px; }
+    .page-size-group label { font-size: 12px; color: var(--gray-400); }
+    .page-size-group select {
+      border: 1px solid var(--gray-200); border-radius: 6px; padding: 4px 8px;
+      font-size: 12px; font-family: inherit; background: var(--white); cursor: pointer; outline: none;
+    }
+    .page-size-group select:focus { border-color: var(--green-mid); }
+
+    /* ── Customer balance cell ── */
+    .balance-positive { color: var(--green-dark); font-weight: 600; }
+    .balance-negative { color: var(--danger); font-weight: 600; }
+
+    /* ── Share View modal ── */
+    #share-modal {
+      display: none; position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,.5); align-items: center; justify-content: center;
+    }
+    #share-modal.open { display: flex; }
+    .share-box {
+      background: var(--white); border-radius: var(--radius);
+      width: min(794px, 97vw); max-height: 94vh;
+      display: flex; flex-direction: column;
+      box-shadow: 0 24px 64px rgba(0,0,0,.28);
+    }
+    .share-toolbar {
+      padding: 12px 16px; border-bottom: 1px solid var(--gray-200);
+      display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; gap: 8px;
+    }
+    .share-toolbar h3 { font-size: 13px; font-weight: 600; color: var(--gray-800); }
+    .share-toolbar-right { display: flex; gap: 8px; align-items: center; }
+    .share-toolbar button {
+      border: 1px solid var(--gray-200); border-radius: 7px;
+      padding: 5px 13px; font-size: 12px; font-weight: 600; font-family: inherit;
+      cursor: pointer; background: var(--white); transition: all .15s;
+    }
+    .share-toolbar button:hover { background: var(--green-pale); border-color: var(--green-mid); }
+    .share-toolbar .btn-print { background: var(--green-mid); color: var(--white); border-color: var(--green-mid); }
+    .share-toolbar .btn-print:hover { background: var(--green-dark); border-color: var(--green-dark); }
+    .share-toolbar .btn-close { background: none; border: none; font-size: 20px; color: var(--gray-400); padding: 2px 5px; }
+    .share-toolbar .btn-close:hover { color: var(--gray-800); background: none; }
+    .share-body { overflow-y: auto; padding: 20px 22px; }
+    .share-head {
+      display: flex; align-items: center; gap: 12px;
+      padding-bottom: 14px; margin-bottom: 14px; border-bottom: 2px solid var(--green-pale);
+    }
+    .share-head img { height: 34px; width: auto; }
+    .share-head-text .sh-name { font-size: 14px; font-weight: 700; color: var(--green-dark); }
+    .share-head-text .sh-sub  { font-size: 11px; color: var(--gray-400); margin-top: 1px; }
+    .share-cols {
+      display: grid;
+      /* 6 columns: #·Date·Customer | #·Date·Customer */
+      grid-template-columns: 28px 1fr 1fr 28px 1fr 1fr;
+      border: 1px solid var(--gray-200); border-radius: 8px; overflow: hidden;
+    }
+    .share-col-head {
+      background: var(--green-pale); color: var(--green-dark);
+      padding: 6px 8px; font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .4px;
+    }
+    /* divider between the two halves */
+    .share-col-head.divider-left  { border-right: 2px solid var(--green-light); }
+    .share-cols .sc {
+      padding: 7px 8px; font-size: 12px; border-top: 1px solid var(--gray-100);
+    }
+    .share-cols .sc.num   { color: var(--gray-400); font-size: 11px; text-align: right; }
+    .share-cols .sc.date  { color: var(--gray-600); white-space: nowrap; }
+    .share-cols .sc.divl  { border-right: 2px solid var(--gray-200); }
+    .share-cols .sc.even  { background: var(--gray-50); }
+    .share-footer { margin-top: 14px; font-size: 11px; color: var(--gray-400); text-align: center; }
+    #share-view-btn {
+      background: var(--white); border: 1px solid var(--gray-200); border-radius: 7px;
+      padding: 5px 13px; font-size: 12px; font-weight: 600; font-family: inherit;
+      cursor: pointer; transition: all .15s; color: var(--gray-800);
+    }
+    #share-view-btn:hover { background: var(--green-pale); border-color: var(--green-mid); }
+    @media print {
+      body > *:not(#share-modal) { display: none !important; }
+      #share-modal { position: static !important; background: none !important; display: block !important; }
+      .share-box { box-shadow: none !important; width: 100% !important; max-height: none !important; }
+      .share-toolbar { display: none !important; }
+    }
+
+    /* ── Loading / Error ── */
+    #loading-overlay {
+      position: fixed; inset: 0; background: rgba(240,250,244,.93);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 999; gap: 14px;
+    }
+    .spinner {
+      width: 38px; height: 38px; border: 4px solid var(--green-pale);
+      border-top-color: var(--green-mid); border-radius: 50%; animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading-overlay p { font-size: 14px; color: var(--gray-600); }
+    #error-banner {
+      display: none; background: #fff5f5; border: 1px solid #fca5a5;
+      color: var(--danger); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 18px; font-size: 14px;
+    }
+
+    @media (max-width: 900px) {
+      main { padding: 16px 14px 40px; }
+      header, .filters-bar, .tab-nav { padding-left: 14px; padding-right: 14px; }
+      .charts-grid { grid-template-columns: 1fr; }
+      .chart-card.full { grid-column: 1; }
+    }
+    @media (max-width: 600px) {
+      .kpi-grid { grid-template-columns: repeat(2,1fr); }
+    }
+
+    /* ── Insights Tab ── */
+    .insights-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 20px; flex-wrap: wrap; gap: 8px;
+    }
+    .insights-header h2 { font-size: 15px; font-weight: 600; color: var(--gray-800); }
+    .insights-meta { font-size: 12px; color: var(--gray-400); }
+
+    .insights-grid { display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }
+
+    .insight-card {
+      background: var(--white); border-radius: var(--radius);
+      padding: 16px 20px 14px; box-shadow: var(--shadow-sm);
+      border-left: 4px solid var(--gray-200);
+    }
+    .insight-card.priority-1 { border-left-color: #dc2626; }
+    .insight-card.priority-2 { border-left-color: #d97706; }
+    .insight-card.priority-3 { border-left-color: var(--green-mid); }
+    .insight-card.priority-4 { border-left-color: #6b7280; }
+
+    .insight-top {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+    }
+    .insight-badge {
+      display: inline-block; padding: 2px 8px; border-radius: 999px;
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
+      flex-shrink: 0;
+    }
+    .insight-badge.URGENT   { background: #fee2e2; color: #dc2626; }
+    .insight-badge.WATCH    { background: #fef3c7; color: #d97706; }
+    .insight-badge.POSITIVE { background: var(--green-pale); color: var(--green-dark); }
+    .insight-badge.INFO     { background: var(--gray-100); color: #6b7280; }
+
+    .insight-rule-id {
+      margin-left: auto; font-size: 10px; color: var(--gray-400);
+      cursor: help; border-bottom: 1px dashed var(--gray-200);
+      white-space: nowrap; flex-shrink: 0;
+    }
+
+    .insight-title {
+      font-size: 14px; font-weight: 600; color: var(--gray-800);
+      margin-bottom: 5px; line-height: 1.4;
+    }
+    .insight-detail {
+      font-size: 13px; color: var(--gray-600); line-height: 1.5;
+      margin-bottom: 10px;
+    }
+    .insight-footer {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; flex-wrap: wrap; margin-top: 4px;
+    }
+    .insight-metric {
+      font-size: 22px; font-weight: 700; color: var(--gray-800);
+    }
+    .insight-action {
+      padding: 5px 14px; border-radius: 7px;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      border: 1px solid var(--gray-200); background: var(--white);
+      font-family: inherit; transition: all .15s; color: var(--gray-800);
+    }
+    .insight-action:hover { background: var(--green-pale); border-color: var(--green-mid); }
+
+    .insights-empty {
+      text-align: center; padding: 48px 24px;
+      background: var(--white); border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
+    }
+    .insights-empty .empty-icon { font-size: 36px; margin-bottom: 12px; }
+    .insights-empty p { color: var(--gray-600); font-size: 14px; }
+    .insights-empty .empty-sub { color: var(--gray-400); font-size: 12px; margin-top: 6px; }
+
+    /* ── Rules debug section ── */
+    .rules-debug { margin-top: 8px; }
+    .rules-debug-toggle {
+      background: none; border: 1px solid var(--gray-200); border-radius: 8px;
+      padding: 8px 16px; font-size: 12px; color: var(--gray-400); cursor: pointer;
+      font-family: inherit; width: 100%; text-align: left; transition: all .15s;
+    }
+    .rules-debug-toggle:hover { background: var(--gray-50); }
+    .rules-debug-body {
+      display: none; background: var(--white);
+      border: 1px solid var(--gray-200); border-radius: 0 0 8px 8px;
+      border-top: none; padding: 12px 16px;
+    }
+    .rules-debug-body.open { display: block; }
+    .rules-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .rules-table th {
+      text-align: left; padding: 5px 10px; color: var(--gray-400);
+      font-size: 10px; text-transform: uppercase; letter-spacing: .4px;
+      border-bottom: 1px solid var(--gray-200);
+    }
+    .rules-table td { padding: 5px 10px; border-bottom: 1px solid var(--gray-100); }
+    .rule-enabled  { color: var(--green-dark); font-weight: 600; }
+    .rule-disabled { color: var(--gray-400); }
+  </style>
+</head>
+<body>
+
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <p>Loading dashboard data…</p>
+</div>
+
+<header>
+  <div class="header-left">
+    <img class="logo" id="header-logo"
+      src="https://capybaracare.in/wp-content/uploads/2025/07/Green-and-White-Elegant-India-Fashion-Brand-Logo-120-x-78-px-1-e1753250830504.png"
+      alt="Capybara Care" />
+    <div class="header-title">
+      <span class="brand" id="header-brand">Capybara Care</span>
+      <span class="sub" id="header-sub">Revenue Dashboard</span>
+    </div>
+  </div>
+  <div class="header-right">
+    <span id="last-updated"></span>
+    <select id="profile-select" style="border:1px solid var(--gray-200);border-radius:8px;padding:6px 10px;font-size:13px;font-weight:600;color:var(--green-dark);background:var(--white);cursor:pointer;">
+      <option value="capybara">Capybara Care</option>
+      <option value="smridhi">Smridhi Online</option>
+      <option value="allsessions">AllSessions</option>
+    </select>
+    <button id="refresh-btn">↻ Refresh</button>
+  </div>
+</header>
+
+<!-- Global filters -->
+<div class="filters-bar">
+  <div class="filter-group">
+    <label>Year</label>
+    <select id="filter-year"><option value="">All Years</option></select>
+  </div>
+  <div class="filter-group">
+    <label>Month</label>
+    <select id="filter-month"><option value="">All Months</option></select>
+  </div>
+  <div class="filter-group">
+    <label>Therapist</label>
+    <select id="filter-therapist"><option value="">All Therapists</option></select>
+  </div>
+  <div class="filter-group">
+    <label>Customer</label>
+    <select id="filter-customer"><option value="">All Customers</option></select>
+  </div>
+  <div class="filter-group" id="filter-calendar-group" style="display:none">
+    <label>Calendar</label>
+    <select id="filter-calendar"><option value="">All Calendars</option></select>
+  </div>
+  <div class="filter-group" id="filter-include-all-group" style="display:none">
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;">
+      <input type="checkbox" id="filter-include-all"
+        style="width:15px;height:15px;accent-color:var(--green-mid);cursor:pointer;">
+      Include All
+    </label>
+  </div>
+  <div class="filter-group">
+    <label>End Date</label>
+    <input type="date" id="filter-end-date"
+      style="border:1px solid var(--gray-200);border-radius:8px;padding:5px 10px;font-size:13px;font-family:inherit;color:var(--gray-800);background:var(--white);cursor:pointer;outline:none;transition:border-color .2s;"
+      onfocus="this.style.borderColor='var(--green-mid)'" onblur="this.style.borderColor='var(--gray-200)'" />
+  </div>
+</div>
+
+<!-- Tab navigation -->
+<div class="tab-nav">
+  <button class="tab-btn active" data-tab="home">Home</button>
+  <button class="tab-btn" data-tab="monthly">Monthly Trend</button>
+  <button class="tab-btn" data-tab="therapist">Therapist</button>
+  <button class="tab-btn" data-tab="customers">Customers</button>
+  <button class="tab-btn" data-tab="insights">Insights</button>
+</div>
+
+<main>
+  <div id="error-banner"></div>
+
+  <!-- ═══════════════════ HOME TAB ═══════════════════ -->
+  <div class="tab-panel active" id="tab-home">
+
+    <div class="kpi-grid">
+      <div class="kpi-card c1">
+        <span class="kpi-label">Total Revenue</span>
+        <span class="kpi-value" id="kpi-total-revenue">—</span>
+        <span class="kpi-sub">Sum of You Gave</span>
+      </div>
+      <div class="kpi-card c2">
+        <span class="kpi-label">Net Revenue</span>
+        <span class="kpi-value" id="kpi-net-revenue">—</span>
+        <span class="kpi-sub">After therapist share</span>
+      </div>
+      <div class="kpi-card c3">
+        <span class="kpi-label">Total Sessions</span>
+        <span class="kpi-value" id="kpi-sessions">—</span>
+        <span class="kpi-sub">Where You Gave &gt; 0</span>
+      </div>
+      <div class="kpi-card c4">
+        <span class="kpi-label">Therapist Payout</span>
+        <span class="kpi-value" id="kpi-therapist-payout">—</span>
+        <span class="kpi-sub">Sum of Share</span>
+      </div>
+      <div class="kpi-card c5">
+        <span class="kpi-label">Avg per Session</span>
+        <span class="kpi-value" id="kpi-avg">—</span>
+        <span class="kpi-sub">Revenue / sessions</span>
+      </div>
+      <div class="kpi-card c6">
+        <span class="kpi-label">Outstanding</span>
+        <span class="kpi-value" id="kpi-outstanding">—</span>
+        <span class="kpi-sub">Revenue − Payments received</span>
+      </div>
+    </div>
+
+    <!-- Transactions table -->
+    <div class="table-card">
+      <div class="table-header">
+        <h3>All Transactions</h3>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button id="share-view-btn">📋 Share View</button>
+          <input type="text" class="table-search" id="table-search" placeholder="Search…" />
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th data-col="Date">Date</th>
+              <th data-col="Customer Name">Customer</th>
+              <th data-col="Details">Details</th>
+              <th data-col="Therapist">Therapist</th>
+              <th data-col="You Gave">You Gave (₹)</th>
+              <th data-col="You Got">Payment Received (₹)</th>
+              <th data-col="Share">Therapist Share (₹)</th>
+              <th data-col="Month">Month</th>
+            </tr>
+          </thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+      <div class="pagination">
+        <div class="page-size-group">
+          <label>Rows</label>
+          <select id="page-size">
+            <option value="20">20</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+        </div>
+        <span id="page-info"></span>
+        <div class="pagination-right">
+          <button id="btn-prev">← Prev</button>
+          <button id="btn-next">Next →</button>
+        </div>
+      </div>
+    </div>
+  </div><!-- /home -->
+
+  <!-- ═══════════════════ MONTHLY TREND TAB ═══════════════════ -->
+  <div class="tab-panel" id="tab-monthly">
+
+    <div class="monthly-trend-toolbar">
+      <div class="trend-toggle">
+        <button class="trend-btn active" id="trend-day-btn" onclick="setTrendView('day')">Day View</button>
+        <button class="trend-btn"        id="trend-week-btn" onclick="setTrendView('week')">Week View</button>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--gray-600);cursor:pointer;margin-left:12px;">
+        <input type="checkbox" id="trend-show-projected" onchange="buildMonthlyTrend(filteredRows)" style="cursor:pointer;">
+        Show projected revenue
+      </label>
+      <span class="trend-hint" id="trend-hint"></span>
+    </div>
+
+    <div class="trend-stats">
+      <div class="trend-stat">
+        <span class="trend-stat-label" id="trend-avg-rev-label">Avg Revenue / Day</span>
+        <span class="trend-stat-value" id="trend-avg-rev">—</span>
+      </div>
+      <div class="trend-stat">
+        <span class="trend-stat-label" id="trend-avg-profit-label">Avg Profit / Day</span>
+        <span class="trend-stat-value" id="trend-avg-profit">—</span>
+      </div>
+    </div>
+
+    <div class="charts-grid">
+      <div class="chart-card full">
+        <div class="chart-title"><span class="dot"></span>Revenue, Profit &amp; Sessions</div>
+        <div class="chart-wrap tall"><canvas id="chart-trend"></canvas></div>
+      </div>
+    </div>
+
+    <div class="charts-grid" style="margin-top:24px">
+      <div class="chart-card full">
+        <div class="chart-title"><span class="dot"></span>Revenue Projection — Pace vs Recent Months</div>
+        <div class="chart-wrap tall"><canvas id="chart-trend-projected"></canvas></div>
+      </div>
+    </div>
+
+  </div><!-- /monthly -->
+
+  <!-- ═══════════════════ THERAPIST TAB ═══════════════════ -->
+  <div class="tab-panel" id="tab-therapist">
+
+    <div class="kpi-grid" id="therapist-kpi-grid">
+      <!-- filled dynamically -->
+    </div>
+
+    <div class="charts-grid">
+      <div class="chart-card full">
+        <div class="chart-title"><span class="dot"></span>Revenue by Therapist (Net Profit + Therapist Share)</div>
+        <div class="chart-wrap tall"><canvas id="chart-therapist-stacked"></canvas></div>
+      </div>
+      <div class="chart-card full">
+        <div class="chart-title"><span class="dot"></span>Monthly Sessions by Therapist</div>
+        <div class="chart-wrap tall"><canvas id="chart-therapist-sessions"></canvas></div>
+      </div>
+    </div>
+
+  </div><!-- /therapist -->
+
+  <!-- ═══════════════════ CUSTOMERS TAB ═══════════════════ -->
+  <div class="tab-panel" id="tab-customers">
+
+    <div class="charts-grid">
+      <div class="chart-card full">
+        <div class="chart-title"><span class="dot"></span>Top Customers — Revenue &amp; Sessions</div>
+        <div class="chart-wrap tall"><canvas id="chart-customer-revenue"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Customer balance table -->
+    <div class="table-card">
+      <div class="table-header">
+        <h3>Customer Balances</h3>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button id="smridhi-roi-btn" class="trend-btn" onclick="toggleSmridhiROI()">Smridhi ROI / session</button>
+          <input type="text" class="table-search" id="cust-search" placeholder="Search customer…" />
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th data-tab="cust" data-col="name">Customer</th>
+              <th data-tab="cust" data-col="sessions">Sessions</th>
+              <th data-tab="cust" data-col="revenue">Revenue (₹)</th>
+              <th data-tab="cust" data-col="revenuePerHour">Rev / session (₹)</th>
+              <th data-tab="cust" data-col="smridhiROI" id="th-smridhi-roi" style="display:none">Smridhi ROI / session (₹)</th>
+              <th data-tab="cust" data-col="received">Payments Received (₹)</th>
+              <th data-tab="cust" data-col="balance">Balance (₹)</th>
+              <th data-tab="cust" data-col="status">Status</th>
+            </tr>
+          </thead>
+          <tbody id="cust-table-body"></tbody>
+        </table>
+      </div>
+      <div class="pagination">
+        <div class="page-size-group">
+          <label>Rows</label>
+          <select id="cust-page-size">
+            <option value="20">20</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+        </div>
+        <span id="cust-page-info"></span>
+        <div class="pagination-right">
+          <button id="cust-btn-prev">← Prev</button>
+          <button id="cust-btn-next">Next →</button>
+        </div>
+      </div>
+    </div>
+  </div><!-- /customers -->
+
+  <!-- ═══════════════════ INSIGHTS TAB ═══════════════════ -->
+  <div class="tab-panel" id="tab-insights">
+
+    <div class="insights-header">
+      <h2 id="insights-count">Loading insights…</h2>
+      <span class="insights-meta" id="insights-checked"></span>
+    </div>
+
+    <div class="insights-grid" id="insights-grid"></div>
+
+    <div class="rules-debug" id="rules-debug">
+      <button class="rules-debug-toggle" onclick="toggleRulesDebug()">
+        All Rules (<span id="rules-active-count">0</span> active /
+        <span id="rules-disabled-count">0</span> disabled)
+      </button>
+      <div class="rules-debug-body" id="rules-debug-body">
+        <table class="rules-table">
+          <thead>
+            <tr><th>Rule ID</th><th>Category</th><th>Status</th></tr>
+          </thead>
+          <tbody id="rules-debug-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /insights -->
+
+</main>
+
+<!-- Share View Modal -->
+<div id="share-modal">
+  <div class="share-box">
+    <div class="share-toolbar">
+      <h3 id="share-modal-title">Session List</h3>
+      <div class="share-toolbar-right">
+        <button class="btn-print" onclick="window.print()">🖨 Print / PDF</button>
+        <button class="btn-close" id="share-close">×</button>
+      </div>
+    </div>
+    <div class="share-body" id="share-body"></div>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// CONFIG
+// ─────────────────────────────────────────────────────────────────────────────
+const SHEET_ID        = '1JeaSJvMTJ1aUGwMrQ62-6V2v8ZWfypb24QbJYbUb5Rs';
+const SHEET_OLD       = 'DataCopy';        // up to March 2026
+const SHEET_NEW       = 'DataCopy 2026';   // April 2026 onwards
+const SHEET_ONLINE    = 'Data Online';     // Data for Smridhi Online profile (from Jan 2026)
+const SHEET_SESSIONS  = 'DataCopySessions'; // All Sessions profile
+// JSONP_CB is now generated per-request; this constant is no longer used
+let _gvizReqId = 0;
+
+const PROFILES = {
+  capybara:    { label: 'Capybara Care',   logo: 'https://capybaracare.in/wp-content/uploads/2025/07/Green-and-White-Elegant-India-Fashion-Brand-Logo-120-x-78-px-1-e1753250830504.png' },
+  smridhi:     { label: 'Smridhi Online',  logo: 'https://capybaracare.in/wp-content/uploads/2025/07/Green-and-White-Elegant-India-Fashion-Brand-Logo-120-x-78-px-1-e1753250830504.png' },
+  allsessions: { label: 'AllSessions',     logo: 'https://capybaracare.in/wp-content/uploads/2025/07/Green-and-White-Elegant-India-Fashion-Brand-Logo-120-x-78-px-1-e1753250830504.png' },
+};
+let activeProfile = 'capybara';
+let smridhiIncludeAll = false; // include Capybara sessions with Therapist=Smridhi+online
+
+function sheetUrl(sheetName, cbName) {
+  return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=responseHandler:${cbName}&sheet=${encodeURIComponent(sheetName)}&_t=${Date.now()}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────────────────────
+let allRows      = [];
+let filteredRows = [];   // session rows only (You Gave > 0)
+let allRowsRaw   = [];   // all rows including payment-only rows (for You Got totals)
+
+let sortCol = 'Date', sortDir = 'desc';
+let custSortCol = 'revenue', custSortDir = 'desc';
+let page = 1, custPage = 1;
+let PAGE = 20;
+
+const SESSION_DURATION_HRS = 0.75;      // 45 min per session
+const SMRIDHI_NAME = 'Smridhi Grover';  // exact name as it appears in the sheet
+let showSmridhiROI = false;
+
+const charts = {};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PALETTE
+// ─────────────────────────────────────────────────────────────────────────────
+const PALETTE = ['#1b4332','#2d6a4f','#40916c','#52b788','#74c69d','#95d5b2','#b7e4c7','#081c15','#a8dadc','#457b9d'];
+function palette(i) { return PALETTE[i % PALETTE.length]; }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+function parseNum(v) {
+  if (v === null || v === undefined || v === '') return 0;
+  const n = parseFloat(String(v).replace(/[^\d.-]/g, ''));
+  return isFinite(n) ? n : 0;
+}
+const fmtShort = n => {
+  if (!Number.isFinite(n)) return '—';
+  if (n >= 1e5) return '₹' + (n / 1e5).toFixed(2) + 'L';
+  if (n >= 1e3) return '₹' + (n / 1e3).toFixed(2) + 'K';
+  return '₹' + n.toFixed(2);
+};
+const fmtExact = n => Number.isFinite(n) ? '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+const fmtFull = n => Number.isFinite(n) ? '₹' + Math.round(n).toLocaleString('en-IN') : '—';
+
+const MONTH_ORDER = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const mIdx = m => { const i = MONTH_ORDER.indexOf(m); return i === -1 ? 99 : i; };
+
+function periodKey(r) {
+  return `${r['Month'] || '?'} ${r['Year'] || '?'}`;
+}
+function periodSort(a, b) {
+  const [ma, ya] = a.split(' '); const [mb, yb] = b.split(' ');
+  if (ya !== yb) return Number(ya) - Number(yb);
+  return mIdx(ma) - mIdx(mb);
+}
+
+function destroyChart(key) {
+  if (charts[key]) { charts[key].destroy(); delete charts[key]; }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FETCH (JSONP)
+// ─────────────────────────────────────────────────────────────────────────────
+function parseGvizTable(json) {
+  const table = json.table || json;
+  const cols  = table.cols.map(c => ({ label: c.label || c.id || '', type: c.type || '' }));
+  return (table.rows || []).map(r => {
+    const obj = {};
+    (r.c || []).forEach((cell, i) => {
+      if (!cell || cell.v === null || cell.v === undefined) { obj[cols[i].label] = ''; return; }
+      // gviz returns dates as "Date(year,month0indexed,day)" strings or JS Date-like values
+      if (cols[i].type === 'date' || cols[i].type === 'datetime') {
+        const v = cell.v;
+        // Format: "Date(2026,1,2)" — month is 0-indexed
+        const m = typeof v === 'string' && v.match(/^Date\((\d+),(\d+),(\d+)/);
+        if (m) {
+          const yr = parseInt(m[1]), mo = parseInt(m[2]), dy = parseInt(m[3]);
+          const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+          obj[cols[i].label] = `${String(dy).padStart(2,'0')} ${months[mo]} ${yr}`;
+        } else {
+          obj[cols[i].label] = cell.f || String(v);
+        }
+      } else {
+        obj[cols[i].label] = cell.v;
+      }
+    });
+    return obj;
+  });
+}
+
+function fetchSheetData(sheetName) {
+  return new Promise((resolve, reject) => {
+    const cbName  = `__gvizCb_${++_gvizReqId}`;
+    const scriptId = `__gviz_script_${_gvizReqId}`;
+
+    // Clean up any previous gviz scripts to avoid DOM clutter
+    document.querySelectorAll('script[id^="__gviz_script_"]').forEach(s => s.remove());
+
+    const timeout = setTimeout(() => {
+      delete window[cbName];
+      reject(new Error('Request timed out. Check that the sheet is publicly shared (Anyone with the link → Viewer).'));
+    }, 15000);
+
+    window[cbName] = function(json) {
+      clearTimeout(timeout);
+      delete window[cbName];
+      document.getElementById(scriptId)?.remove();
+      try { resolve(parseGvizTable(json)); } catch(e) { reject(e); }
+    };
+
+    const script = document.createElement('script');
+    script.id  = scriptId;
+    script.src = sheetUrl(sheetName, cbName);
+    script.onerror = () => {
+      clearTimeout(timeout);
+      delete window[cbName];
+      script.remove();
+      reject(new Error(`Failed to load sheet "${sheetName}". Check that it is publicly shared.`));
+    };
+    document.head.appendChild(script);
+  });
+}
+
+// Fetch old sheet (≤ Mar 2026) + new sheet (≥ Apr 2026) sequentially and merge
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function rowYearMonth(r) {
+  // Date format: "DD Mon YYYY"
+  const parts = (r['Date'] || '').split(' ');
+  if (parts.length < 3) return null;
+  const mo = MONTHS.indexOf(parts[1]);
+  const yr = parseInt(parts[2]);
+  if (isNaN(yr) || mo < 0) return null;
+  return { yr, mo }; // mo is 0-indexed
+}
+
+function normalizeSmridhiRow(r) {
+  // Smridhi Online sheet has: Date, Customer Name, Details, You Gave, You Got
+  // Inject Month, Year, Therapist, Share so all existing functions work unchanged
+  const ym = rowYearMonth(r);
+  return {
+    ...r,
+    Therapist: SMRIDHI_NAME,
+    Share:     0,
+    Month:     ym ? MONTHS[ym.mo]  : '',
+    Year:      ym ? ym.yr          : '',
+  };
+}
+
+function normalizeSessionsRow(r) {
+  // DataCopySessions has: Date, Customer Name, Details, You Gave, You Got, Calendar, Therapist, Share
+  // Only need to inject Month, Year
+  const ym = rowYearMonth(r);
+  return {
+    ...r,
+    Month: ym ? MONTHS[ym.mo] : '',
+    Year:  ym ? ym.yr         : '',
+  };
+}
+
+async function fetchAllData() {
+  if (activeProfile === 'smridhi') {
+    const onlineRows = (await fetchSheetData(SHEET_ONLINE)).map(normalizeSmridhiRow);
+    if (!smridhiIncludeAll) return onlineRows;
+    // Fetch Capybara sheets and filter for Smridhi's online sessions
+    const oldRows = await fetchSheetData(SHEET_OLD);
+    const newRows = await fetchSheetData(SHEET_NEW);
+    const capyRows = [...oldRows, ...newRows].filter(r => {
+      const therapist = (r['Therapist'] || '').trim();
+      const details   = (r['Details']   || '').toLowerCase();
+      return therapist === SMRIDHI_NAME && details.includes('online');
+    }).map(r => {
+      const ym = rowYearMonth(r);
+      return { ...r, Month: ym ? MONTHS[ym.mo] : '', Year: ym ? ym.yr : '' };
+    });
+    return [...onlineRows, ...capyRows];
+  }
+  if (activeProfile === 'allsessions') {
+    const rows = await fetchSheetData(SHEET_SESSIONS);
+    return rows.map(normalizeSessionsRow);
+  }
+  // Capybara Care: two-sheet merge
+  const oldRows = await fetchSheetData(SHEET_OLD);
+  const newRows = await fetchSheetData(SHEET_NEW);
+  // Guard: keep old sheet rows up to March 2026, new sheet rows from April 2026
+  const filtered_old = oldRows.filter(r => {
+    const ym = rowYearMonth(r);
+    if (!ym) return true; // keep rows without a parseable date
+    return ym.yr < 2026 || (ym.yr === 2026 && ym.mo <= 2); // mo 2 = March (0-indexed)
+  });
+  const filtered_new = newRows.filter(r => {
+    const ym = rowYearMonth(r);
+    if (!ym) return false;
+    return ym.yr > 2026 || (ym.yr === 2026 && ym.mo >= 3); // mo 3 = April (0-indexed)
+  });
+  return [...filtered_old, ...filtered_new];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FILTERS
+// ─────────────────────────────────────────────────────────────────────────────
+function populateFilters(rows) {
+  // Use allRowsRaw for populating dropdowns so all customers/therapists appear
+  const src = allRowsRaw;
+  const years     = [...new Set(src.map(r => r['Year']).filter(Boolean))].sort((a,b) => b - a);
+  const months    = [...new Set(src.map(r => r['Month']).filter(Boolean))].sort((a,b) => mIdx(a) - mIdx(b));
+  const therapists = [...new Set(src.map(r => r['Therapist']).filter(Boolean))].sort();
+  const customers  = [...new Set(src.map(r => r['Customer Name']).filter(Boolean))].sort();
+  fillSelect('filter-year',      years,      'All Years');
+  fillSelect('filter-month',     months,     'All Months');
+  fillSelect('filter-therapist', therapists, 'All Therapists');
+  fillSelect('filter-customer',  customers,  'All Customers');
+  // For Smridhi Online: lock therapist dropdown to Smridhi Grover
+  const tSel = document.getElementById('filter-therapist');
+  if (activeProfile === 'smridhi') {
+    tSel.value    = SMRIDHI_NAME;
+    tSel.disabled = true;
+  } else {
+    tSel.disabled = false;
+  }
+  // Include All checkbox: only visible on smridhi profile
+  document.getElementById('filter-include-all-group').style.display =
+    activeProfile === 'smridhi' ? '' : 'none';
+  // Calendar filter: only visible for AllSessions profile
+  const calGroup = document.getElementById('filter-calendar-group');
+  if (activeProfile === 'allsessions') {
+    const calendars = [...new Set(src.map(r => r['Calendar']).filter(Boolean))].sort();
+    fillSelect('filter-calendar', calendars, 'All Calendars');
+    calGroup.style.display = '';
+  } else {
+    calGroup.style.display = 'none';
+    document.getElementById('filter-calendar').value = '';
+  }
+}
+
+function fillSelect(id, values, placeholder) {
+  const sel = document.getElementById(id);
+  const cur = sel.value;
+  sel.innerHTML = `<option value="">${placeholder}</option>`;
+  values.forEach(v => {
+    const o = document.createElement('option');
+    o.value = v; o.textContent = v;
+    if (String(v) === String(cur)) o.selected = true;
+    sel.appendChild(o);
+  });
+}
+
+function getEffectiveEndDate() {
+  const val = document.getElementById('filter-end-date').value;
+  if (!val) {
+    const t = new Date(); t.setHours(23, 59, 59, 999); return t;
+  }
+  const [y, m, d] = val.split('-').map(Number);
+  return new Date(y, m - 1, d, 23, 59, 59, 999);
+}
+
+function todayDateString() {
+  const t = new Date();
+  return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
+}
+
+function getFilterValues() {
+  return {
+    year:      document.getElementById('filter-year').value,
+    month:     document.getElementById('filter-month').value,
+    therapist: document.getElementById('filter-therapist').value,
+    customer:  document.getElementById('filter-customer').value,
+    calendar:  document.getElementById('filter-calendar').value,
+    endDate:   document.getElementById('filter-end-date').value,
+  };
+}
+
+function applyFilters() {
+  const f = getFilterValues();
+  // filteredRows = session rows (You Gave > 0) matching the filter
+  const endDate = getEffectiveEndDate();
+  filteredRows = allRows.filter(r => {
+    if (f.year      && String(r['Year'])      !== String(f.year))  return false;
+    if (f.month     && r['Month']             !== f.month)         return false;
+    if (f.therapist && r['Therapist']         !== f.therapist)     return false;
+    if (f.customer  && r['Customer Name']     !== f.customer)      return false;
+    if (f.calendar  && r['Calendar']          !== f.calendar)      return false;
+    const d = parseDate(r['Date']);
+    if (d && d > endDate) return false;
+    return true;
+  });
+  page = 1; custPage = 1;
+  render();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KPIs
+// ─────────────────────────────────────────────────────────────────────────────
+function computeKPIs(rows) {
+  let totalRev = 0, totalShare = 0;
+  rows.forEach(r => {
+    totalRev   += parseNum(r['You Gave']);
+    totalShare += parseNum(r['Share']);
+  });
+  const sessions = rows.length;
+  const net = totalRev - totalShare;
+  const avg = sessions > 0 ? Math.round(totalRev / sessions) : 0;
+
+  // Outstanding: total revenue from sessions - total payments received (You Got) across all matching rows
+  const f = getFilterValues();
+  const _endDate = getEffectiveEndDate();
+  let totalReceived = 0;
+  allRowsRaw.forEach(r => {
+    if (f.year      && String(r['Year'])  !== String(f.year))  return;
+    if (f.month     && r['Month']         !== f.month)         return;
+    if (f.therapist && r['Therapist']     !== f.therapist)     return;
+    if (f.customer  && r['Customer Name'] !== f.customer)      return;
+    if (f.calendar  && r['Calendar']      !== f.calendar)      return;
+    const _d = parseDate(r['Date']);
+    if (_d && _d > _endDate) return;
+    totalReceived += parseNum(r['You Got']);
+  });
+  const outstanding = totalRev - totalReceived;
+
+  const _setKpi = (id, short, exact) => {
+    const el = document.getElementById(id);
+    el.textContent = short;
+    el.title = exact;
+  };
+  _setKpi('kpi-total-revenue',    fmtShort(totalRev),    fmtExact(totalRev));
+  _setKpi('kpi-net-revenue',      fmtShort(net),         fmtExact(net));
+  _setKpi('kpi-therapist-payout', fmtShort(totalShare),  fmtExact(totalShare));
+  _setKpi('kpi-avg',              fmtShort(avg),         fmtExact(avg));
+  _setKpi('kpi-outstanding',      fmtShort(outstanding), fmtExact(outstanding));
+  document.getElementById('kpi-sessions').textContent = sessions;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MONTHLY TREND TAB
+// ─────────────────────────────────────────────────────────────────────────────
+let trendView = 'day'; // 'day' | 'week'
+
+function setTrendView(v) {
+  trendView = v;
+  document.getElementById('trend-day-btn').classList.toggle('active',  v === 'day');
+  document.getElementById('trend-week-btn').classList.toggle('active', v === 'week');
+  buildMonthlyTrend(filteredRows);
+}
+
+function buildMonthlyTrend(rows) {
+  destroyChart('trend');
+
+  const f           = getFilterValues();
+  const byDay       = trendView === 'day';
+  const showProj    = document.getElementById('trend-show-projected')?.checked;
+  const endDate     = getEffectiveEndDate();
+
+  // Build future (projected) rows: same filters as filteredRows but date > endDate
+  const projRows = showProj ? allRows.filter(r => {
+    if (f.year      && String(r['Year'])      !== String(f.year))  return false;
+    if (f.month     && r['Month']             !== f.month)         return false;
+    if (f.therapist && r['Therapist']         !== f.therapist)     return false;
+    if (f.customer  && r['Customer Name']     !== f.customer)      return false;
+    if (f.calendar  && r['Calendar']          !== f.calendar)      return false;
+    const d = parseDate(r['Date']);
+    return d && d > endDate;
+  }) : [];
+
+  // Detect multi-month data so we can use date-aware bucket keys
+  const allDisplayRows  = [...rows, ...projRows];
+  const uniqueMonths = [...new Set(allDisplayRows.map(r => r['Month']).filter(Boolean))];
+  const multiMonth   = uniqueMonths.length > 1;
+
+  function rowToKey(r) {
+    const dateParts = (r['Date'] || '').split(' ');
+    if (dateParts.length < 3) return null;
+    const day   = parseInt(dateParts[0]);
+    const mon   = dateParts[1];
+    const yr    = parseInt(dateParts[2]);
+    const moIdx = MONTHS.indexOf(mon);
+    if (!day || moIdx < 0 || isNaN(yr)) return null;
+    let key, sortKey;
+    if (byDay) {
+      if (multiMonth) {
+        key     = `${String(day).padStart(2, '0')} ${mon}`;
+        sortKey = yr * 10000 + moIdx * 100 + day;
+      } else {
+        key     = String(day).padStart(2, '0');
+        sortKey = day;
+      }
+    } else {
+      const w = day <= 7 ? 1 : day <= 14 ? 2 : day <= 21 ? 3 : day <= 28 ? 4 : 5;
+      if (multiMonth) {
+        key     = `${mon} W${w}`;
+        sortKey = yr * 1000 + moIdx * 10 + w;
+      } else {
+        const wLabels = ['', 'W1 (1–7)', 'W2 (8–14)', 'W3 (15–21)', 'W4 (22–28)', 'W5 (29+)'];
+        key     = wLabels[w];
+        sortKey = w;
+      }
+    }
+    return { key, sortKey };
+  }
+
+  const map = {};
+  rows.forEach(r => {
+    const res = rowToKey(r);
+    if (!res) return;
+    const { key, sortKey } = res;
+    if (!map[key]) map[key] = { rev: 0, share: 0, sessions: 0, sortKey };
+    map[key].rev     += parseNum(r['You Gave']);
+    map[key].share   += parseNum(r['Share']);
+    map[key].sessions++;
+  });
+
+  const projMap = {};
+  projRows.forEach(r => {
+    const res = rowToKey(r);
+    if (!res) return;
+    const { key, sortKey } = res;
+    if (!projMap[key]) projMap[key] = { rev: 0, share: 0, sessions: 0, sortKey };
+    projMap[key].rev     += parseNum(r['You Gave']);
+    projMap[key].share   += parseNum(r['Share']);
+    projMap[key].sessions++;
+  });
+
+  // Merge label sets: actual labels + projected-only labels
+  const allKeys = [...new Set([...Object.keys(map), ...Object.keys(projMap)])];
+  const allSortMap = {};
+  allKeys.forEach(k => { allSortMap[k] = (map[k] || projMap[k]).sortKey; });
+  const labels = allKeys.sort((a, b) => allSortMap[a] - allSortMap[b]);
+
+  const profit   = labels.map(k => Math.round((map[k]?.rev || 0) - (map[k]?.share || 0)));
+  const share    = labels.map(k => Math.round(map[k]?.share || 0));
+  const sessions = labels.map(k => map[k]?.sessions || 0);
+  const projRev  = labels.map(k => Math.round(projMap[k]?.rev || 0));
+  const projSess = labels.map(k => projMap[k]?.sessions || 0);
+
+  // Stat pills — avg over buckets that had sessions
+  const activeBuckets = labels.filter(k => map[k]?.sessions > 0).length || 1;
+  const totalRev    = labels.reduce((s, k) => s + (map[k]?.rev || 0), 0);
+  const totalProfit = labels.reduce((s, k) => s + ((map[k]?.rev || 0) - (map[k]?.share || 0)), 0);
+  const unit        = byDay ? 'Day' : 'Week';
+  const fmt         = v => v >= 1000 ? '₹' + (v / 1000).toFixed(1) + 'K' : '₹' + Math.round(v);
+  document.getElementById('trend-avg-rev-label').textContent    = `Avg Revenue / ${unit}`;
+  document.getElementById('trend-avg-profit-label').textContent = `Avg Profit / ${unit}`;
+  document.getElementById('trend-avg-rev').textContent    = fmt(totalRev    / activeBuckets);
+  document.getElementById('trend-avg-profit').textContent = fmt(totalProfit / activeBuckets);
+
+  // Hint
+  const periodStr       = f.month && f.year ? `${f.month} ${f.year}` : f.month || f.year || 'selected period';
+  const extras          = [f.therapist, f.customer].filter(Boolean).join(', ');
+  const multiMonthNote  = multiMonth ? ` (${uniqueMonths.length} months)` : '';
+  document.getElementById('trend-hint').textContent =
+    `${byDay ? 'Day-wise' : 'Week-wise'} breakdown · ${periodStr}${multiMonthNote}${extras ? ' · ' + extras : ''}`;
+
+  const datasets = [
+    {
+      label: 'Profit',
+      data: profit,
+      backgroundColor: '#2d6a4f',
+      borderRadius: 0,
+      borderSkipped: false,
+      stack: 'revenue',
+      order: 2,
+      yAxisID: 'y',
+    },
+    {
+      label: 'Therapist Share',
+      data: share,
+      backgroundColor: 'rgba(116,198,157,.75)',
+      borderRadius: 5,
+      borderSkipped: 'bottom',
+      stack: 'revenue',
+      order: 2,
+      yAxisID: 'y',
+    },
+    {
+      label: 'Sessions',
+      data: sessions,
+      type: 'line',
+      borderColor: '#d97706',
+      backgroundColor: 'rgba(217,119,6,.08)',
+      pointBackgroundColor: '#d97706',
+      tension: .35,
+      fill: false,
+      borderWidth: 2,
+      pointRadius: 4,
+      order: 1,
+      yAxisID: 'y1',
+    },
+  ];
+
+  if (showProj && projRows.length > 0) {
+    datasets.push({
+      label: 'Projected Revenue',
+      data: projRev,
+      backgroundColor: 'rgba(116,198,157,.35)',
+      borderRadius: 5,
+      borderSkipped: false,
+      stack: 'projected',
+      order: 3,
+      yAxisID: 'y',
+    });
+    datasets.push({
+      label: 'Projected Sessions',
+      data: projSess,
+      type: 'line',
+      borderColor: '#d97706',
+      backgroundColor: 'transparent',
+      pointBackgroundColor: '#d97706',
+      tension: .35,
+      fill: false,
+      borderWidth: 2,
+      borderDash: [5, 4],
+      pointRadius: 4,
+      pointStyle: 'circle',
+      order: 1,
+      yAxisID: 'y1',
+    });
+  }
+
+  const ctx = document.getElementById('chart-trend').getContext('2d');
+  charts['trend'] = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', labels: { font: { family: 'Inter', size: 12 } } },
+        tooltip: {
+          mode: 'index',
+          intersect: false,
+          callbacks: {
+            label: (item) => {
+              const val = item.parsed.y ?? item.parsed;
+              if (item.dataset.label === 'Sessions' || item.dataset.label === 'Projected Sessions') {
+                return `  ${item.dataset.label}: ${val}`;
+              }
+              const fmt = v => '₹' + Math.round(v).toLocaleString('en-IN');
+              return `  ${item.dataset.label}: ${fmt(val)}`;
+            },
+            footer: (items) => {
+              const p = items.find(i => i.dataset.label === 'Profit');
+              const s = items.find(i => i.dataset.label === 'Therapist Share');
+              if (!p || !s) return '';
+              const total = (p.parsed.y || 0) + (s.parsed.y || 0);
+              return 'Revenue: ₹' + Math.round(total).toLocaleString('en-IN');
+            },
+          },
+        },
+      },
+      scales: {
+        x:  { stacked: true, grid: { display: false }, ticks: { font: { family: 'Inter', size: 11 } } },
+        y:  { stacked: true, position: 'left', grid: { color: '#f3f4f6' },
+              ticks: { font: { family: 'Inter', size: 11 },
+                callback: v => v >= 1000 ? '₹' + (v/1000).toFixed(0) + 'K' : '₹' + v } },
+        y1: { position: 'right', grid: { drawOnChartArea: false },
+              ticks: { font: { family: 'Inter', size: 11 }, stepSize: 1 },
+              title: { display: true, text: 'Sessions', font: { family: 'Inter', size: 11 }, color: '#d97706' } },
+      },
+    },
+  });
+
+  buildProjectedRevenue();
+}
+
+function buildProjectedRevenueAllSessions(f, endDate) {
+  // Group allRows by month into actuals (≤ endDate) and projected (> endDate)
+  const actualMap   = {};
+  const projectedMap = {};
+
+  allRows.forEach(r => {
+    if (f.year      && String(r['Year'])      !== String(f.year))  return;
+    if (f.therapist && r['Therapist']         !== f.therapist)     return;
+    if (f.customer  && r['Customer Name']     !== f.customer)      return;
+    if (f.calendar  && r['Calendar']          !== f.calendar)      return;
+    const d = parseDate(r['Date']);
+    if (!d) return;
+    const k = periodKey(r);
+    if (d <= endDate) {
+      if (!actualMap[k])    actualMap[k]    = { rev: 0, sessions: 0 };
+      actualMap[k].rev      += parseNum(r['You Gave']);
+      actualMap[k].sessions++;
+    } else {
+      if (!projectedMap[k]) projectedMap[k] = { rev: 0, sessions: 0 };
+      projectedMap[k].rev      += parseNum(r['You Gave']);
+      projectedMap[k].sessions++;
+    }
+  });
+
+  const allPeriods = [...new Set([...Object.keys(actualMap), ...Object.keys(projectedMap)])].sort(periodSort);
+
+  // Show last 3 actual months + all future months
+  const actualPeriods = Object.keys(actualMap).sort(periodSort);
+  const futurePeriods = Object.keys(projectedMap).sort(periodSort);
+  const showActuals   = actualPeriods.slice(-3);
+  const showPeriods   = [...new Set([...showActuals, ...futurePeriods])].sort(periodSort);
+
+  const actualData    = showPeriods.map(k => Math.round(actualMap[k]?.rev    || 0));
+  const projectedData = showPeriods.map(k => Math.round(projectedMap[k]?.rev || 0));
+
+  // 3-month rolling avg from completed actual months (for reference line)
+  const last3  = showActuals.slice(-3);
+  const avgRef = last3.length > 0
+    ? Math.round(last3.reduce((s, k) => s + (actualMap[k]?.rev || 0), 0) / last3.length)
+    : null;
+
+  const fmtR = v => '₹' + Math.round(v).toLocaleString('en-IN');
+
+  const datasets = [
+    {
+      label: 'Actual Revenue',
+      data: actualData,
+      backgroundColor: showPeriods.map(k => projectedMap[k] ? '#74c69d' : '#52b788'),
+      borderRadius: 4,
+      stack: 'rev',
+      order: 2,
+      yAxisID: 'y',
+    },
+    {
+      label: 'Projected (Booked)',
+      data: projectedData,
+      backgroundColor: 'rgba(116,198,157,.35)',
+      borderRadius: 4,
+      borderSkipped: 'bottom',
+      stack: 'rev',
+      order: 2,
+      yAxisID: 'y',
+    },
+  ];
+
+  if (avgRef !== null) {
+    datasets.push({
+      label: '3-month avg',
+      data: showPeriods.map(() => avgRef),
+      type: 'line',
+      borderColor: '#d97706',
+      borderDash: [6, 4],
+      backgroundColor: 'transparent',
+      pointRadius: 0,
+      borderWidth: 2,
+      fill: false,
+      order: 1,
+      yAxisID: 'y',
+    });
+  }
+
+  const ctx = document.getElementById('chart-trend-projected').getContext('2d');
+  charts['trend-projected'] = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: showPeriods, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', labels: { font: { family: 'Inter', size: 12 } } },
+        tooltip: {
+          mode: 'index',
+          intersect: false,
+          callbacks: {
+            label: (item) => {
+              if (item.parsed.y === 0) return null;
+              return `  ${item.dataset.label}: ${fmtR(item.parsed.y)}`;
+            },
+            footer: (items) => {
+              const a = items.find(i => i.dataset.label === 'Actual Revenue');
+              const p = items.find(i => i.dataset.label === 'Projected (Booked)');
+              if (!p || p.parsed.y === 0) return '';
+              return `Total booked: ${fmtR((a?.parsed.y || 0) + p.parsed.y)}`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: { stacked: true, grid: { display: false }, ticks: { font: { family: 'Inter', size: 11 } } },
+        y: {
+          stacked: true,
+          grid: { color: '#f3f4f6' },
+          ticks: {
+            font: { family: 'Inter', size: 11 },
+            callback: v => v >= 1000 ? '₹' + (v / 1000).toFixed(0) + 'K' : '₹' + v,
+          },
+        },
+      },
+    },
+  });
+}
+
+function buildProjectedRevenue() {
+  destroyChart('trend-projected');
+
+  const f       = getFilterValues();
+  const endDate = getEffectiveEndDate();
+
+  // ── AllSessions: use real future bookings as projection ──────────────────
+  if (activeProfile === 'allsessions') {
+    buildProjectedRevenueAllSessions(f, endDate);
+    return;
+  }
+
+  // ── Other profiles: pace-based projection ────────────────────────────────
+  const today        = new Date();
+  const curYear      = today.getFullYear();
+  const curMonAbbr   = MONTHS[today.getMonth()];
+  const daysElapsed  = today.getDate();
+  const daysInMonth  = new Date(curYear, today.getMonth() + 1, 0).getDate();
+  const curPeriod    = `${curMonAbbr} ${curYear}`;
+
+  // Monthly totals from allRows (year / therapist / customer filtered; ignore month filter)
+  // Clip to endDate so future rows (if any) don't inflate actuals
+  const monthMap = {};
+  allRows.forEach(r => {
+    if (f.year      && String(r['Year'])      !== String(f.year))  return;
+    if (f.therapist && r['Therapist']         !== f.therapist)     return;
+    if (f.customer  && r['Customer Name']     !== f.customer)      return;
+    const _d = parseDate(r['Date']);
+    if (_d && _d > endDate) return;
+    const k = periodKey(r);
+    if (!monthMap[k]) monthMap[k] = { rev: 0 };
+    monthMap[k].rev += parseNum(r['You Gave']);
+  });
+
+  const sortedPeriods = Object.keys(monthMap).sort(periodSort);
+  const showPeriods   = sortedPeriods.slice(-6);           // last 6 months
+
+  const actuals = showPeriods.map(k => Math.round(monthMap[k]?.rev || 0));
+
+  const projectedExtra = showPeriods.map(k => {
+    if (k !== curPeriod || daysElapsed >= daysInMonth || daysElapsed === 0) return 0;
+    const actual    = monthMap[k]?.rev || 0;
+    const projected = (actual / daysElapsed) * daysInMonth;
+    return Math.round(Math.max(0, projected - actual));
+  });
+
+  // 3-month rolling avg of completed months
+  const pastPeriods = sortedPeriods.filter(k => k !== curPeriod);
+  const last3       = pastPeriods.slice(-3);
+  const avgRef      = last3.length > 0
+    ? Math.round(last3.reduce((s, k) => s + (monthMap[k]?.rev || 0), 0) / last3.length)
+    : null;
+
+  const fmtR = v => '₹' + Math.round(v).toLocaleString('en-IN');
+
+  const datasets = [
+    {
+      label: 'Actual Revenue',
+      data: actuals,
+      backgroundColor: showPeriods.map(k => k === curPeriod ? '#2d6a4f' : '#52b788'),
+      borderRadius: 4,
+      stack: 'rev',
+      order: 2,
+      yAxisID: 'y',
+    },
+    {
+      label: 'Projected',
+      data: projectedExtra,
+      backgroundColor: 'rgba(116,198,157,.4)',
+      borderRadius: 4,
+      borderSkipped: 'bottom',
+      stack: 'rev',
+      order: 2,
+      yAxisID: 'y',
+    },
+  ];
+
+  if (avgRef !== null) {
+    datasets.push({
+      label: '3-month avg',
+      data: showPeriods.map(() => avgRef),
+      type: 'line',
+      borderColor: '#d97706',
+      borderDash: [6, 4],
+      backgroundColor: 'transparent',
+      pointRadius: 0,
+      borderWidth: 2,
+      fill: false,
+      order: 1,
+      yAxisID: 'y',
+    });
+  }
+
+  const ctx = document.getElementById('chart-trend-projected').getContext('2d');
+  charts['trend-projected'] = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: showPeriods, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', labels: { font: { family: 'Inter', size: 12 } } },
+        tooltip: {
+          mode: 'index',
+          intersect: false,
+          callbacks: {
+            label: (item) => {
+              if (item.parsed.y === 0) return null;
+              return `  ${item.dataset.label}: ${fmtR(item.parsed.y)}`;
+            },
+            footer: (items) => {
+              const p = items.find(i => i.dataset.label === 'Projected');
+              if (!p || p.parsed.y === 0) return '';
+              const a = items.find(i => i.dataset.label === 'Actual Revenue');
+              return `Projected total: ${fmtR((a?.parsed.y || 0) + p.parsed.y)}`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: { stacked: true, grid: { display: false }, ticks: { font: { family: 'Inter', size: 11 } } },
+        y: {
+          stacked: true,
+          grid: { color: '#f3f4f6' },
+          ticks: {
+            font: { family: 'Inter', size: 11 },
+            callback: v => v >= 1000 ? '₹' + (v / 1000).toFixed(0) + 'K' : '₹' + v,
+          },
+        },
+      },
+    },
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HOME CHARTS (kept for Home tab)
+// ─────────────────────────────────────────────────────────────────────────────
+function buildMonthlyChart(rows) {
+  destroyChart('monthly');
+  const map = {};
+  rows.forEach(r => {
+    const k = periodKey(r);
+    if (!map[k]) map[k] = { rev: 0, share: 0 };
+    map[k].rev   += parseNum(r['You Gave']);
+    map[k].share += parseNum(r['Share']);
+  });
+  const labels = Object.keys(map).sort(periodSort);
+  const profit  = labels.map(k => Math.round(map[k].rev - map[k].share));
+  const cost    = labels.map(k => Math.round(map[k].share));
+
+  const ctx = document.getElementById('chart-monthly').getContext('2d');
+  charts['monthly'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Profit',
+          data: profit,
+          backgroundColor: '#2d6a4f',
+          borderRadius: 0,
+          borderSkipped: false,
+          stack: 'revenue',
+          order: 1,
+        },
+        {
+          label: 'Therapist Share',
+          data: cost,
+          backgroundColor: 'rgba(116,198,157,.75)',
+          borderRadius: 5,
+          borderSkipped: 'bottom',
+          stack: 'revenue',
+          order: 1,
+        },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'top', labels: { font: { family:'Inter', size:12 } } } },
+      scales: {
+        x: { stacked: true, grid: { display:false }, ticks: { font: { family:'Inter', size:11 } } },
+        y: { stacked: true, grid: { color:'#f3f4f6' }, ticks: { font: { family:'Inter', size:11 },
+          callback: v => v >= 1000 ? '₹'+(v/1000).toFixed(0)+'K' : '₹'+v } },
+      },
+    },
+  });
+}
+
+function buildSessionsChart(rows) {
+  destroyChart('sessions');
+  const map = {};
+  rows.forEach(r => { const k = periodKey(r); map[k] = (map[k] || 0) + 1; });
+  const labels = Object.keys(map).sort(periodSort);
+  const counts = labels.map(k => map[k]);
+  const ctx = document.getElementById('chart-sessions').getContext('2d');
+  charts['sessions'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Sessions',
+          data: counts,
+          backgroundColor: 'rgba(64,145,108,.75)',
+          borderRadius: 5,
+          order: 2,
+        },
+        {
+          label: 'Trend',
+          data: counts,
+          type: 'line',
+          borderColor: '#1b4332',
+          backgroundColor: 'rgba(27,67,50,.08)',
+          pointBackgroundColor: '#1b4332',
+          tension: .35,
+          fill: false,
+          borderWidth: 2,
+          pointRadius: 4,
+          order: 1,
+        },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display:false } },
+      scales: {
+        x: { grid: { display:false }, ticks: { font: { family:'Inter', size:11 } } },
+        y: { grid: { color:'#f3f4f6' }, ticks: { font: { family:'Inter', size:11 }, stepSize:1 } },
+      },
+    },
+  });
+}
+
+function buildAvgSessionChart(rows) {
+  destroyChart('avg-session');
+  const map = {};
+  rows.forEach(r => {
+    const k = periodKey(r);
+    if (!map[k]) map[k] = { rev: 0, count: 0 };
+    map[k].rev += parseNum(r['You Gave']);
+    map[k].count++;
+  });
+  const labels = Object.keys(map).sort(periodSort);
+  const ctx = document.getElementById('chart-avg-session').getContext('2d');
+  charts['avg-session'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ label: 'Avg ₹/Session', data: labels.map(k => Math.round(map[k].rev / map[k].count)),
+        backgroundColor: 'rgba(116,198,157,.8)', borderRadius: 5 }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display:false } },
+      scales: {
+        x: { grid: { display:false }, ticks: { font: { family:'Inter', size:11 } } },
+        y: { grid: { color:'#f3f4f6' }, ticks: { font: { family:'Inter', size:11 },
+          callback: v => v >= 1000 ? '₹'+(v/1000).toFixed(0)+'K' : '₹'+v } },
+      },
+    },
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THERAPIST TAB
+// ─────────────────────────────────────────────────────────────────────────────
+function buildTherapistKPIs(rows) {
+  const grid = document.getElementById('therapist-kpi-grid');
+  const map = {};
+  rows.forEach(r => {
+    const t = r['Therapist'] || 'Unknown';
+    if (!map[t]) map[t] = { rev: 0, share: 0, sessions: 0 };
+    map[t].rev      += parseNum(r['You Gave']);
+    map[t].share    += parseNum(r['Share']);
+    map[t].sessions++;
+  });
+  const therapists = Object.keys(map).sort((a,b) => map[b].rev - map[a].rev);
+  grid.innerHTML = '';
+  therapists.forEach((t, i) => {
+    const d = map[t];
+    const card = document.createElement('div');
+    card.className = `kpi-card c${(i % 6) + 1}`;
+    card.innerHTML = `
+      <span class="kpi-label">${t}</span>
+      <span class="kpi-value">${fmtShort(d.rev)}</span>
+      <span class="kpi-sub">${d.sessions} sessions · share ${fmtShort(d.share)} · net ${fmtShort(d.rev - d.share)}</span>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+function buildTherapistStackedChart(rows) {
+  destroyChart('therapist-stacked');
+
+  // Collect all periods and therapists
+  const periods    = [...new Set(rows.map(periodKey))].sort(periodSort);
+  const therapists = [...new Set(rows.map(r => r['Therapist'] || 'Unknown'))].sort();
+
+  // Build per-therapist, per-period data
+  const byTherapistPeriod = {};
+  rows.forEach(r => {
+    const t = r['Therapist'] || 'Unknown';
+    const p = periodKey(r);
+    if (!byTherapistPeriod[t]) byTherapistPeriod[t] = {};
+    if (!byTherapistPeriod[t][p]) byTherapistPeriod[t][p] = { share: 0, net: 0 };
+    byTherapistPeriod[t][p].share += parseNum(r['Share']);
+    byTherapistPeriod[t][p].net   += parseNum(r['You Gave']) - parseNum(r['Share']);
+  });
+
+  const datasets = [];
+  therapists.forEach((t, ti) => {
+    const baseColor = palette(ti);
+    const shareColor = baseColor + 'aa'; // semi-transparent for share
+
+    datasets.push({
+      label: `${t} — Net Profit`,
+      data: periods.map(p => byTherapistPeriod[t]?.[p]?.net || 0),
+      backgroundColor: baseColor,
+      stack: t,
+      borderRadius: 4,
+    });
+    datasets.push({
+      label: `${t} — Therapist Share`,
+      data: periods.map(p => byTherapistPeriod[t]?.[p]?.share || 0),
+      backgroundColor: shareColor,
+      stack: t,
+      borderRadius: 0,
+    });
+  });
+
+  const ctx = document.getElementById('chart-therapist-stacked').getContext('2d');
+  charts['therapist-stacked'] = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: periods, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: { font: { family:'Inter', size:11 }, boxWidth: 12, padding: 10 },
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: ₹${Math.round(ctx.raw).toLocaleString('en-IN')}`,
+          },
+        },
+      },
+      scales: {
+        x: { stacked: true, grid: { display:false }, ticks: { font: { family:'Inter', size:11 } } },
+        y: { stacked: true, grid: { color:'#f3f4f6' }, ticks: { font: { family:'Inter', size:11 },
+          callback: v => v >= 1000 ? '₹'+(v/1000).toFixed(0)+'K' : '₹'+v } },
+      },
+    },
+  });
+}
+
+function buildTherapistSessionsChart(rows) {
+  destroyChart('therapist-sessions');
+  const periods    = [...new Set(rows.map(periodKey))].sort(periodSort);
+  const therapists = [...new Set(rows.map(r => r['Therapist'] || 'Unknown'))].sort();
+
+  const sessMap = {};
+  rows.forEach(r => {
+    const t = r['Therapist'] || 'Unknown';
+    const p = periodKey(r);
+    if (!sessMap[t]) sessMap[t] = {};
+    sessMap[t][p] = (sessMap[t][p] || 0) + 1;
+  });
+
+  const datasets = therapists.map((t, i) => ({
+    label: t,
+    data: periods.map(p => sessMap[t]?.[p] || 0),
+    borderColor: palette(i),
+    backgroundColor: palette(i) + '22',
+    tension: .3,
+    fill: false,
+    pointBackgroundColor: palette(i),
+    borderWidth: 2,
+    pointRadius: 4,
+  }));
+
+  const ctx = document.getElementById('chart-therapist-sessions').getContext('2d');
+  charts['therapist-sessions'] = new Chart(ctx, {
+    type: 'line',
+    data: { labels: periods, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position:'top', labels: { font: { family:'Inter', size:11 }, boxWidth:12, padding:10 } } },
+      scales: {
+        x: { grid: { display:false }, ticks: { font: { family:'Inter', size:11 } } },
+        y: { grid: { color:'#f3f4f6' }, ticks: { font: { family:'Inter', size:11 }, stepSize:1 } },
+      },
+    },
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CUSTOMERS TAB
+// ─────────────────────────────────────────────────────────────────────────────
+function buildCustomerData(rows) {
+  // Revenue & sessions from session rows (You Gave > 0)
+  const map = {};
+  rows.forEach(r => {
+    const c = r['Customer Name'] || 'Unknown';
+    if (!map[c]) map[c] = { revenue: 0, sessions: 0, received: 0 };
+    map[c].revenue  += parseNum(r['You Gave']);
+    map[c].sessions++;
+  });
+
+  // Payments received (You Got) from ALL raw rows matching current filter
+  const f = getFilterValues();
+  allRowsRaw.forEach(r => {
+    if (f.year      && String(r['Year'])  !== String(f.year))  return;
+    if (f.month     && r['Month']         !== f.month)         return;
+    if (f.therapist && r['Therapist']     !== f.therapist)     return;
+    if (f.customer  && r['Customer Name'] !== f.customer)      return;
+    const got = parseNum(r['You Got']);
+    if (!got) return;
+    const c = r['Customer Name'] || 'Unknown';
+    if (!map[c]) map[c] = { revenue: 0, sessions: 0, received: 0 };
+    map[c].received += got;
+  });
+
+  // Smridhi metrics — use allRows filtered by year/month/customer only (ignore therapist filter)
+  const smridhiMap = {};
+  allRows.forEach(r => {
+    if (f.year     && String(r['Year'])      !== String(f.year))  return;
+    if (f.month    && r['Month']             !== f.month)         return;
+    if (f.customer && r['Customer Name']     !== f.customer)      return;
+    const name = r['Customer Name'] || 'Unknown';
+    if (!smridhiMap[name]) smridhiMap[name] = { smridhiSessions: 0, nonSmridhiShare: 0 };
+    if (r['Therapist'] === SMRIDHI_NAME) smridhiMap[name].smridhiSessions++;
+    else smridhiMap[name].nonSmridhiShare += parseNum(r['Share']);
+  });
+
+  return Object.entries(map).map(([name, d]) => {
+    const s          = smridhiMap[name] || { smridhiSessions: 0, nonSmridhiShare: 0 };
+    const activeHrs  = s.smridhiSessions * SESSION_DURATION_HRS;
+    const totalSess  = d.sessions;
+    return {
+      name,
+      ...d,
+      balance:        d.revenue - d.received,
+      revenuePerHour: totalSess > 0 ? d.revenue / totalSess : null,
+      smridhiROI:     s.smridhiSessions > 0 ? (d.revenue - s.nonSmridhiShare) / s.smridhiSessions : null,
+    };
+  });
+}
+
+function buildCustomerChart(rows) {
+  destroyChart('customer-revenue');
+  const data   = buildCustomerData(rows);
+  const sorted = [...data].sort((a,b) => b.revenue - a.revenue).slice(0, 15);
+
+  const ctx = document.getElementById('chart-customer-revenue').getContext('2d');
+  charts['customer-revenue'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: sorted.map(d => d.name),
+      datasets: [
+        {
+          label: 'Revenue (₹)',
+          data: sorted.map(d => d.revenue),
+          backgroundColor: 'rgba(64,145,108,.8)',
+          borderRadius: 5,
+          yAxisID: 'y',
+        },
+        {
+          label: 'Sessions',
+          data: sorted.map(d => d.sessions),
+          type: 'line',
+          borderColor: '#1b4332',
+          backgroundColor: 'rgba(27,67,50,.08)',
+          pointBackgroundColor: '#1b4332',
+          tension: .3,
+          borderWidth: 2,
+          pointRadius: 5,
+          yAxisID: 'y1',
+        },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position:'top', labels: { font: { family:'Inter', size:12 } } } },
+      scales: {
+        x: { grid: { display:false }, ticks: { font: { family:'Inter', size:11 } } },
+        y: { grid: { color:'#f3f4f6' }, position:'left',
+          ticks: { font: { family:'Inter', size:11 }, callback: v => v>=1000?'₹'+(v/1000).toFixed(0)+'K':'₹'+v } },
+        y1: { position:'right', grid: { drawOnChartArea:false },
+          ticks: { font: { family:'Inter', size:11 }, stepSize:1 } },
+      },
+    },
+  });
+}
+
+function getCustTableRows() {
+  const q = document.getElementById('cust-search').value.trim().toLowerCase();
+  const data = buildCustomerData(filteredRows);
+  let rows = q ? data.filter(d => d.name.toLowerCase().includes(q)) : data;
+  rows = [...rows].sort((a,b) => {
+    const va = a[custSortCol] ?? 0;
+    const vb = b[custSortCol] ?? 0;
+    if (custSortCol === 'name') return custSortDir === 'asc'
+      ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+    return custSortDir === 'asc' ? va - vb : vb - va;
+  });
+  return rows;
+}
+
+function toggleSmridhiROI() {
+  showSmridhiROI = !showSmridhiROI;
+  document.getElementById('smridhi-roi-btn').classList.toggle('active', showSmridhiROI);
+  document.getElementById('th-smridhi-roi').style.display = showSmridhiROI ? '' : 'none';
+  renderCustTable();
+}
+
+function renderCustTable() {
+  const rows  = getCustTableRows();
+  const total = rows.length;
+  const pages = Math.max(1, Math.ceil(total / PAGE));
+  custPage    = Math.min(custPage, pages);
+  const slice = rows.slice((custPage-1)*PAGE, custPage*PAGE);
+
+  const tbody = document.getElementById('cust-table-body');
+  tbody.innerHTML = '';
+  slice.forEach(d => {
+    const balClass = d.balance < 0 ? 'balance-negative' : d.balance === 0 ? '' : 'balance-positive';
+    let statusBadge;
+    if (d.balance < 0) {
+      statusBadge = `<span class="badge badge-green">Advance ₹${Math.abs(d.balance).toLocaleString('en-IN')}</span>`;
+    } else if (d.balance === 0) {
+      statusBadge = `<span class="badge badge-green">Settled</span>`;
+    } else {
+      statusBadge = `<span class="badge badge-red">Due ₹${d.balance.toLocaleString('en-IN')}</span>`;
+    }
+    const fmtHr = v => v == null ? '—' : (v >= 1000 ? '₹' + (v/1000).toFixed(1) + 'K' : '₹' + Math.round(v));
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${d.name}</td>
+      <td>${d.sessions}</td>
+      <td>${fmtFull(d.revenue)}</td>
+      <td>${fmtHr(d.revenuePerHour)}</td>
+      ${showSmridhiROI ? `<td>${fmtHr(d.smridhiROI)}</td>` : ''}
+      <td>${d.received ? fmtFull(d.received) : '—'}</td>
+      <td class="${balClass}">${d.balance !== 0 ? fmtFull(Math.abs(d.balance)) : '₹0'}</td>
+      <td>${statusBadge}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('cust-page-info').textContent = `Page ${custPage} of ${pages} (${total})`;
+  document.getElementById('cust-btn-prev').disabled = custPage <= 1;
+  document.getElementById('cust-btn-next').disabled = custPage >= pages;
+
+  document.querySelectorAll('thead th[data-tab="cust"]').forEach(th => {
+    th.classList.remove('sort-asc','sort-desc');
+    if (th.dataset.col === custSortCol) th.classList.add(custSortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN TRANSACTIONS TABLE
+// ─────────────────────────────────────────────────────────────────────────────
+function getTableRows() {
+  const q = document.getElementById('table-search').value.trim().toLowerCase();
+  let rows = q
+    ? filteredRows.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(q)))
+    : filteredRows;
+  return [...rows].sort((a,b) => {
+    let va = a[sortCol] ?? '', vb = b[sortCol] ?? '';
+    if (['You Gave','You Got','Share'].includes(sortCol)) { va = parseNum(va); vb = parseNum(vb); }
+    else if (['Month#','Year'].includes(sortCol))          { va = Number(va); vb = Number(vb); }
+    else if (sortCol === 'Date') { va = (parseDate(va) || new Date(0)).getTime(); vb = (parseDate(vb) || new Date(0)).getTime(); }
+    else { va = String(va).toLowerCase(); vb = String(vb).toLowerCase(); }
+    if (va < vb) return sortDir === 'asc' ? -1 : 1;
+    if (va > vb) return sortDir === 'asc' ? 1  : -1;
+    return 0;
+  });
+}
+
+function renderTable() {
+  const rows  = getTableRows();
+  const total = rows.length;
+  const pages = Math.max(1, Math.ceil(total / PAGE));
+  page        = Math.min(page, pages);
+  const slice = rows.slice((page-1)*PAGE, page*PAGE);
+
+  const tbody = document.getElementById('table-body');
+  tbody.innerHTML = '';
+  slice.forEach(r => {
+    const youGot = parseNum(r['You Got']);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${r['Date'] || ''}</td>
+      <td>${r['Customer Name'] || ''}</td>
+      <td>${r['Details'] || ''}</td>
+      <td><span class="badge badge-green">${r['Therapist'] || ''}</span></td>
+      <td>${parseNum(r['You Gave']) ? fmtFull(parseNum(r['You Gave'])) : '—'}</td>
+      <td>${youGot ? fmtFull(youGot) : '—'}</td>
+      <td>${parseNum(r['Share']) ? fmtFull(parseNum(r['Share'])) : '—'}</td>
+      <td>${r['Month'] || ''} ${r['Year'] || ''}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('page-info').textContent = `Page ${page} of ${pages} (${total} rows)`;
+  document.getElementById('btn-prev').disabled = page <= 1;
+  document.getElementById('btn-next').disabled = page >= pages;
+
+  document.querySelectorAll('thead th[data-col]').forEach(th => {
+    th.classList.remove('sort-asc','sort-desc');
+    if (th.dataset.col === sortCol) th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+  });
+}
+
+// ============================================
+// INSIGHTS ENGINE
+// Easy to add, edit, or remove individual rules.
+// Each rule is an independent object in the
+// INSIGHT_RULES array. To disable a rule, set
+// enabled: false. To add a rule, push a new
+// object following the same schema.
+// ============================================
+
+// ── Config — edit thresholds here without touching rule logic ──
+const INSIGHT_CONFIG = {
+  outstandingUrgentThreshold:  5000,   // ₹ owed before URGENT fires
+  advanceWarningThreshold:     2000,   // ₹ advance remaining before warning
+  dropoutGapDays:              10,     // days of no sessions → dropout watch
+  dropoutUrgentDays:           14,     // days of no sessions → urgent
+  newClientDays:               45,     // days since first session = "new client"
+  newClientMinSessions:        4,      // sessions below this = low engagement
+  revenueDropPercent:          30,     // week-over-week drop threshold (%)
+  revenueRisePercent:          20,     // week-over-week rise threshold (%)
+  concentrationRiskPercent:    40,     // top-3 clients % before risk flag
+  therapistDropPercent:        30,     // sessions drop % vs monthly avg
+  highLifetimeValue:           50000,  // ₹ lifetime billing milestone
+  unusualSessionMultiple:      3,      // Nx avg rate = unusual session value
+  dataFreshnessDays:           2,      // days since last row before stale warning
+  returningClientGapDays:      21,     // gap (days) that counts as a "return"
+  maxInsightsToShow:           12,     // cap total rendered cards
+  weeksOfHistoryForAverage:    8,      // weeks of data for averages
+  largePaymentThreshold:       8000,   // ₹ You Got entry = "large payment"
+  multipleOutstandingMin:      3,      // min clients owing before group alert
+  multipleDropoutMin:          2,      // min dropout clients before group alert
+  loyalClientMonths:           4,      // months span = "long-term loyal"
+  loyalClientMaxGapDays:       21,     // max gap allowed in loyal client check
+};
+
+// ── Date utilities ─────────────────────────────────────────────
+function parseDate(dateStr) {
+  if (!dateStr) return null;
+  const parts = String(dateStr).trim().split(' ');
+  if (parts.length < 3) return null;
+  const day = parseInt(parts[0]);
+  const mo  = MONTH_ORDER.indexOf(parts[1]);
+  const yr  = parseInt(parts[2]);
+  if (isNaN(day) || mo < 0 || isNaN(yr)) return null;
+  return new Date(yr, mo, day);
+}
+
+function daysSince(dateStr) {
+  const d = parseDate(dateStr);
+  if (!d) return Infinity;
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  return Math.floor((now - d) / 86400000);
+}
+
+function formatDate(dateStr) {
+  const d = parseDate(dateStr);
+  if (!d) return dateStr || '?';
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+}
+
+// Short ₹ formatter for insight cards (1 decimal place)
+function fmtI(n) {
+  if (!Number.isFinite(n)) return '—';
+  if (n >= 1e5) return '₹' + (n / 1e5).toFixed(1) + 'L';
+  if (n >= 1e3) return '₹' + (n / 1e3).toFixed(1) + 'K';
+  return '₹' + Math.round(n).toLocaleString('en-IN');
+}
+
+// ── Data helpers ───────────────────────────────────────────────
+function getSessionsForClient(data, clientName) {
+  return data.filter(r => r['Customer Name'] === clientName && parseNum(r['You Gave']) > 0);
+}
+
+function getLastSessionDate(data, clientName) {
+  const sessions = getSessionsForClient(data, clientName);
+  if (!sessions.length) return null;
+  return sessions
+    .map(r => r['Date'])
+    .sort((a, b) => (parseDate(b) || 0) - (parseDate(a) || 0))[0];
+}
+
+function getClientWeeklyAverage(data, clientName, weeks) {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - weeks * 7);
+  cutoff.setHours(0, 0, 0, 0);
+  const sessions = getSessionsForClient(data, clientName).filter(r => {
+    const d = parseDate(r['Date']); return d && d >= cutoff;
+  });
+  return sessions.length / weeks;
+}
+
+function getOutstandingBalance(data, clientName) {
+  let gave = 0, got = 0;
+  data.forEach(r => {
+    if (r['Customer Name'] !== clientName) return;
+    gave += parseNum(r['You Gave']);
+    got  += parseNum(r['You Got']);
+  });
+  return gave - got; // positive = owes us, negative = has advance
+}
+
+function getThisWeekRevenue(data) {
+  const now = new Date();
+  const start = new Date(now);
+  start.setDate(now.getDate() - now.getDay());
+  start.setHours(0, 0, 0, 0);
+  return data.reduce((sum, r) => {
+    if (!parseNum(r['You Gave'])) return sum;
+    const d = parseDate(r['Date']);
+    return d && d >= start ? sum + parseNum(r['You Gave']) : sum;
+  }, 0);
+}
+
+function getLastWeekRevenue(data) {
+  const now = new Date();
+  const startThis = new Date(now);
+  startThis.setDate(now.getDate() - now.getDay());
+  startThis.setHours(0, 0, 0, 0);
+  const startLast = new Date(startThis);
+  startLast.setDate(startLast.getDate() - 7);
+  return data.reduce((sum, r) => {
+    if (!parseNum(r['You Gave'])) return sum;
+    const d = parseDate(r['Date']);
+    return d && d >= startLast && d < startThis ? sum + parseNum(r['You Gave']) : sum;
+  }, 0);
+}
+
+function getThisMonthRevenue(data) {
+  const now = new Date();
+  const m = MONTH_ORDER[now.getMonth()];
+  const y = String(now.getFullYear());
+  return data
+    .filter(r => parseNum(r['You Gave']) > 0 && r['Month'] === m && String(r['Year']) === y)
+    .reduce((sum, r) => sum + parseNum(r['You Gave']), 0);
+}
+
+function getLastMonthRevenue(data) {
+  const lm = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1);
+  const m = MONTH_ORDER[lm.getMonth()];
+  const y = String(lm.getFullYear());
+  return data
+    .filter(r => parseNum(r['You Gave']) > 0 && r['Month'] === m && String(r['Year']) === y)
+    .reduce((sum, r) => sum + parseNum(r['You Gave']), 0);
+}
+
+function getClientTotalRevenue(data, clientName) {
+  return getSessionsForClient(data, clientName)
+    .reduce((sum, r) => sum + parseNum(r['You Gave']), 0);
+}
+
+function getClientFirstSessionDate(data, clientName) {
+  const sessions = getSessionsForClient(data, clientName);
+  if (!sessions.length) return null;
+  return sessions
+    .map(r => r['Date'])
+    .sort((a, b) => (parseDate(a) || 0) - (parseDate(b) || 0))[0];
+}
+
+function getClientSessionCount(data, clientName) {
+  return getSessionsForClient(data, clientName).length;
+}
+
+function getDayOfWeekRevenue(data, dayName) {
+  const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const dayIdx = dayNames.indexOf(dayName);
+  if (dayIdx < 0) return 0;
+  const dayRows = data.filter(r => {
+    if (!parseNum(r['You Gave'])) return false;
+    const d = parseDate(r['Date']); return d && d.getDay() === dayIdx;
+  });
+  if (!dayRows.length) return 0;
+  return dayRows.reduce((sum, r) => sum + parseNum(r['You Gave']), 0) / dayRows.length;
+}
+
+// Returns allRowsRaw filtered by the year dropdown only
+function getInsightsData() {
+  // Always use full history regardless of filters.
+  // Balance/outstanding calculations need all-time data to be correct.
+  // Trend rules (revenue pace, week-over-week, etc.) scope themselves
+  // internally using new Date() comparisons.
+  return allRowsRaw;
+}
+
+// ── RULES ──────────────────────────────────────────────────────
+const INSIGHT_RULES = [
+
+  // --- GROUP 1: OUTSTANDING & PAYMENTS ---
+
+  {
+    id: 'high_outstanding_balance',
+    enabled: true,
+    priority: 1,
+    category: 'URGENT',
+    evaluate(data) {
+      const clients = [...new Set(data.map(r => r['Customer Name']).filter(Boolean))];
+      const results = [];
+      clients.forEach(name => {
+        const outstanding = getOutstandingBalance(data, name);
+        if (outstanding <= INSIGHT_CONFIG.outstandingUrgentThreshold) return;
+        const sessions = getSessionsForClient(data, name);
+        const lastPmtRow = [...data]
+          .filter(r => r['Customer Name'] === name && parseNum(r['You Got']) > 0)
+          .sort((a, b) => (parseDate(b['Date']) || 0) - (parseDate(a['Date']) || 0))[0];
+        const lastPmtDate = lastPmtRow ? lastPmtRow['Date'] : null;
+        const gap = lastPmtDate ? daysSince(lastPmtDate) : null;
+        const gapStr = gap !== null ? ` — ${gap} days since last payment` : ' — no payments on record';
+        results.push({
+          title: `${name} owes ${fmtI(outstanding)}${gapStr}`,
+          detail: `${sessions.length} total sessions. Last payment: ${lastPmtDate ? formatDate(lastPmtDate) : 'none'}. Consider sending a payment reminder.`,
+          metric: fmtI(outstanding),
+          action: `Message ${name.split(' ')[0]}`,
+          affectedClients: [name],
+        });
+      });
+      return results.length ? results : null;
+    },
+  },
+
+  {
+    id: 'advance_expiring_soon',
+    enabled: true,
+    priority: 1,
+    category: 'URGENT',
+    evaluate(data) {
+      const clients = [...new Set(data.map(r => r['Customer Name']).filter(Boolean))];
+      const results = [];
+      clients.forEach(name => {
+        const outstanding = getOutstandingBalance(data, name);
+        if (outstanding >= 0) return;
+        const advance = Math.abs(outstanding);
+        if (advance >= INSIGHT_CONFIG.advanceWarningThreshold) return;
+        const sessions = getSessionsForClient(data, name);
+        if (!sessions.length) return;
+        const avgRate = sessions.reduce((s, r) => s + parseNum(r['You Gave']), 0) / sessions.length;
+        const sessLeft = avgRate > 0 ? Math.floor(advance / avgRate) : 0;
+        results.push({
+          title: `${name}'s advance is running low — ${fmtI(advance)} left`,
+          detail: `Approximately ${sessLeft} session${sessLeft !== 1 ? 's' : ''} remaining at their usual rate of ${fmtI(avgRate)}. Good time to request renewal.`,
+          metric: fmtI(advance),
+          action: `Contact ${name.split(' ')[0]}`,
+          affectedClients: [name],
+        });
+      });
+      return results.length ? results : null;
+    },
+  },
+
+  {
+    id: 'multiple_outstanding_clients',
+    enabled: true,
+    priority: 2,
+    category: 'WATCH',
+    evaluate(data) {
+      const now = new Date();
+      const curM = MONTH_ORDER[now.getMonth()];
+      const curY = String(now.getFullYear());
+      const monthSessions = data.filter(r =>
+        r['Month'] === curM && String(r['Year']) === curY && parseNum(r['You Gave']) > 0
+      );
+      if (!monthSessions.length) return null;
+      const clientsThisMonth = [...new Set(monthSessions.map(r => r['Customer Name']).filter(Boolean))];
+      const owing = clientsThisMonth.filter(name => getOutstandingBalance(data, name) > 0);
+      if (owing.length <= INSIGHT_CONFIG.multipleOutstandingMin) return null;
+      const total = owing.reduce((sum, name) => sum + getOutstandingBalance(data, name), 0);
+      return {
+        title: `${owing.length} clients have pending payments this month`,
+        detail: `Total outstanding: ${fmtI(total)}. Clients: ${owing.join(', ')}. Consider a bulk reminder.`,
+        metric: fmtI(total),
+        affectedClients: owing,
+      };
+    },
+  },
+
+  {
+    id: 'large_single_payment_received',
+    enabled: true,
+    priority: 3,
+    category: 'POSITIVE',
+    evaluate(data) {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 7);
+      cutoff.setHours(0, 0, 0, 0);
+      const recent = data
+        .filter(r => {
+          const d = parseDate(r['Date']);
+          return d && d >= cutoff && parseNum(r['You Got']) > INSIGHT_CONFIG.largePaymentThreshold;
+        })
+        .sort((a, b) => (parseDate(b['Date']) || 0) - (parseDate(a['Date']) || 0));
+      if (!recent.length) return null;
+      const r = recent[0];
+      const name = r['Customer Name'];
+      const amount = parseNum(r['You Got']);
+      const balance = getOutstandingBalance(data, name);
+      const balStr = balance < 0
+        ? `${fmtI(Math.abs(balance))} advance`
+        : balance === 0 ? 'settled' : `${fmtI(balance)} still due`;
+      return {
+        title: `Large payment received from ${name} — ${fmtI(amount)}`,
+        detail: `Payment received on ${formatDate(r['Date'])}. Current balance is now ${balStr}.`,
+        metric: fmtI(amount),
+        affectedClients: [name],
+      };
+    },
+  },
+
+  // --- GROUP 2: SESSION FREQUENCY & DROPOUT RISK ---
+
+  {
+    id: 'client_missing_expected_sessions',
+    enabled: true,
+    priority: 2,
+    category: 'WATCH',
+    evaluate(data) {
+      const now = new Date(); now.setHours(0, 0, 0, 0);
+      const cut30 = new Date(now); cut30.setDate(now.getDate() - 30);
+      const cut2w = new Date(now); cut2w.setDate(now.getDate() - 14);
+      const cut8w = new Date(now); cut8w.setDate(now.getDate() - INSIGHT_CONFIG.weeksOfHistoryForAverage * 7);
+
+      const activeClients = [...new Set(
+        data.filter(r => {
+          if (!parseNum(r['You Gave'])) return false;
+          const d = parseDate(r['Date']); return d && d >= cut30;
+        }).map(r => r['Customer Name']).filter(Boolean)
+      )];
+
+      const results = [];
+      activeClients.forEach(name => {
+        const s8w = getSessionsForClient(data, name).filter(r => {
+          const d = parseDate(r['Date']); return d && d >= cut8w;
+        });
+        const avgPerWeek = s8w.length / INSIGHT_CONFIG.weeksOfHistoryForAverage;
+        if (avgPerWeek < 0.3) return;
+        const s2w = s8w.filter(r => { const d = parseDate(r['Date']); return d && d >= cut2w; });
+        if (s2w.length >= avgPerWeek * 2 * 0.5) return;
+        const allSess = getSessionsForClient(data, name);
+        const avgRev = allSess.length
+          ? allSess.reduce((s, r) => s + parseNum(r['You Gave']), 0) / allSess.length : 0;
+        const monthlyRisk = Math.round(avgRev * avgPerWeek * 4);
+        results.push({
+          title: `${name} session frequency has dropped`,
+          detail: `Usually ${avgPerWeek.toFixed(1)}×/week, but only ${s2w.length} session${s2w.length !== 1 ? 's' : ''} in last 2 weeks. Potential dropout risk. Estimated lost revenue if they leave: ${fmtI(monthlyRisk)}/month.`,
+          action: `Check in with ${name.split(' ')[0]}`,
+          affectedClients: [name],
+        });
+      });
+      return results.length ? results : null;
+    },
+  },
+
+  {
+    id: 'client_no_show_streak',
+    enabled: true,
+    priority: 2,
+    category: 'WATCH',
+    evaluate(data) {
+      const now = new Date(); now.setHours(0, 0, 0, 0);
+      const cutRecent = new Date(now); cutRecent.setDate(now.getDate() - INSIGHT_CONFIG.dropoutGapDays);
+      const cutPrior  = new Date(now); cutPrior.setDate(now.getDate() - INSIGHT_CONFIG.dropoutGapDays * 2);
+
+      const allClients = [...new Set(
+        data.filter(r => parseNum(r['You Gave']) > 0).map(r => r['Customer Name']).filter(Boolean)
+      )];
+      const results = [];
+
+      allClients.forEach(name => {
+        const recentSess = getSessionsForClient(data, name).filter(r => {
+          const d = parseDate(r['Date']); return d && d > cutRecent;
+        });
+        if (recentSess.length > 0) return;
+
+        const priorSess = getSessionsForClient(data, name).filter(r => {
+          const d = parseDate(r['Date']); return d && d <= cutRecent && d > cutPrior;
+        });
+        if (!priorSess.length) return;
+
+        const lastDate = getLastSessionDate(data, name);
+        const gap = lastDate ? daysSince(lastDate) : null;
+        if (!gap || gap < INSIGHT_CONFIG.dropoutGapDays) return;
+
+        const allSess = getSessionsForClient(data, name);
+        const avgRev = allSess.length
+          ? allSess.reduce((s, r) => s + parseNum(r['You Gave']), 0) / allSess.length : 0;
+        const avgWeekly = getClientWeeklyAverage(data, name, INSIGHT_CONFIG.weeksOfHistoryForAverage);
+        const missedSess = Math.max(1, Math.round((gap / 7) * avgWeekly));
+        const missedRev  = Math.round(missedSess * avgRev);
+
+        const priority = gap > INSIGHT_CONFIG.dropoutUrgentDays ? 1 : 2;
+        const category = gap > INSIGHT_CONFIG.dropoutUrgentDays ? 'URGENT' : 'WATCH';
+        results.push({
+          _priority: priority,
+          _category: category,
+          title: `${name} hasn't had a session in ${gap} days`,
+          detail: `Last session was ${formatDate(lastDate)} (${gap} days ago). At their usual frequency this is approximately ${missedSess} missed session${missedSess !== 1 ? 's' : ''} worth ${fmtI(missedRev)}.`,
+          action: `Reach out to ${name.split(' ')[0]}`,
+          affectedClients: [name],
+        });
+      });
+      return results.length ? results : null;
+    },
+  },
+
+  {
+    id: 'new_client_low_engagement',
+    enabled: true,
+    priority: 2,
+    category: 'WATCH',
+    evaluate(data) {
+      const now = new Date(); now.setHours(0, 0, 0, 0);
+      const cutNew = new Date(now); cutNew.setDate(now.getDate() - INSIGHT_CONFIG.newClientDays);
+      const allClients = [...new Set(
+        data.filter(r => parseNum(r['You Gave']) > 0).map(r => r['Customer Name']).filter(Boolean)
+      )];
+      const results = [];
+      allClients.forEach(name => {
+        const firstDate = getClientFirstSessionDate(data, name);
+        if (!firstDate) return;
+        const fd = parseDate(firstDate);
+        if (!fd || fd < cutNew) return;
+        const count = getClientSessionCount(data, name);
+        if (count >= INSIGHT_CONFIG.newClientMinSessions) return;
+        results.push({
+          title: `${name} — new client with low engagement`,
+          detail: `Started ${formatDate(firstDate)}, only ${count} session${count !== 1 ? 's' : ''} so far. Early dropout risk. Consider a check-in call.`,
+          action: `Call ${name.split(' ')[0]}`,
+          affectedClients: [name],
+        });
+      });
+      return results.length ? results : null;
+    },
+  },
+
+  {
+    id: 'multiple_dropout_risks',
+    enabled: true,
+    priority: 2,
+    category: 'WATCH',
+    evaluate(data) {
+      const now = new Date(); now.setHours(0, 0, 0, 0);
+      const cutRecent = new Date(now); cutRecent.setDate(now.getDate() - INSIGHT_CONFIG.dropoutGapDays);
+      const cutPrior  = new Date(now); cutPrior.setDate(now.getDate() - INSIGHT_CONFIG.dropoutGapDays * 2);
+      const allClients = [...new Set(
+        data.filter(r => parseNum(r['You Gave']) > 0).map(r => r['Customer Name']).filter(Boolean)
+      )];
+      const risks = allClients.filter(name => {
+        const recent = getSessionsForClient(data, name).filter(r => {
+          const d = parseDate(r['Date']); return d && d > cutRecent;
+        });
+        const prior = getSessionsForClient(data, name).filter(r => {
+          const d = parseDate(r['Date']); return d && d <= cutRecent && d > cutPrior;
+        });
+        return recent.length === 0 && prior.length > 0;
+      });
+      if (risks.length <= INSIGHT_CONFIG.multipleDropoutMin) return null;
+      const combinedRisk = risks.reduce((sum, name) => {
+        const allSess = getSessionsForClient(data, name);
+        const avgRev = allSess.length
+          ? allSess.reduce((s, r) => s + parseNum(r['You Gave']), 0) / allSess.length : 0;
+        const weekly = getClientWeeklyAverage(data, name, 4);
+        return sum + Math.round(avgRev * weekly * 4);
+      }, 0);
+      return {
+        title: `${risks.length} clients showing dropout risk this week`,
+        detail: `Clients: ${risks.join(', ')}. Combined monthly revenue at risk: ${fmtI(combinedRisk)}. Review attendance patterns.`,
+        metric: fmtI(combinedRisk),
+        affectedClients: risks,
+      };
+    },
+  },
+
+  // --- GROUP 3: REVENUE PACE & TRENDS ---
+
+  {
+    id: 'monthly_revenue_pace',
+    enabled: true,
+    priority: 4,
+    category: 'INFO',
+    evaluate(data) {
+      const now = new Date();
+      const dayOfMonth  = now.getDate();
+      const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      const curM = MONTH_ORDER[now.getMonth()];
+      const curY = String(now.getFullYear());
+
+      const thisMonthRev = data
+        .filter(r => parseNum(r['You Gave']) > 0 && r['Month'] === curM && String(r['Year']) === curY)
+        .reduce((sum, r) => sum + parseNum(r['You Gave']), 0);
+      const projected = dayOfMonth > 0 ? Math.round((thisMonthRev / dayOfMonth) * daysInMonth) : 0;
+
+      const lastMonthRev = getLastMonthRevenue(data);
+      const pct = lastMonthRev > 0 ? ((projected - lastMonthRev) / lastMonthRev) * 100 : 0;
+      const sign = pct >= 0 ? '+' : '';
+      const pctStr = `${sign}${Math.round(pct)}%`;
+
+      // Revenue at same day-of-month last month (for comparison)
+      const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lmM = MONTH_ORDER[lm.getMonth()];
+      const lmY = String(lm.getFullYear());
+      const lastAtSamePoint = data
+        .filter(r => {
+          if (!parseNum(r['You Gave'])) return false;
+          if (r['Month'] !== lmM || String(r['Year']) !== lmY) return false;
+          const d = parseDate(r['Date']); return d && d.getDate() <= dayOfMonth;
+        })
+        .reduce((sum, r) => sum + parseNum(r['You Gave']), 0);
+
+      const vsStr = thisMonthRev >= lastAtSamePoint ? 'Ahead of' : 'Behind';
+
+      let priority = 4, category = 'INFO';
+      if (pct > 10)  { priority = 3; category = 'POSITIVE'; }
+      if (pct < -15) { priority = 2; category = 'WATCH'; }
+
+      return {
+        _priority: priority,
+        _category: category,
+        title: `On pace for ${fmtI(projected)} this month (${pctStr} vs last month)`,
+        detail: `${fmtI(thisMonthRev)} earned in first ${dayOfMonth} days. ${vsStr} last month's ${fmtI(lastAtSamePoint)} at this point.`,
+        metric: fmtI(projected),
+      };
+    },
+  },
+
+  {
+    id: 'best_revenue_day_pattern',
+    enabled: true,
+    priority: 4,
+    category: 'INFO',
+    evaluate(data) {
+      const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - INSIGHT_CONFIG.weeksOfHistoryForAverage * 7);
+      cutoff.setHours(0, 0, 0, 0);
+      const recent = data.filter(r => {
+        if (!parseNum(r['You Gave'])) return false;
+        const d = parseDate(r['Date']); return d && d >= cutoff;
+      });
+      if (recent.length < 10) return null;
+
+      // Group by unique day occurrences (date-level granularity)
+      const dayOccurrences = {};
+      recent.forEach(r => {
+        const d = parseDate(r['Date']); if (!d) return;
+        const key = d.toDateString();
+        if (!dayOccurrences[key]) dayOccurrences[key] = { idx: d.getDay(), rev: 0 };
+        dayOccurrences[key].rev += parseNum(r['You Gave']);
+      });
+      const byDayIdx = {};
+      Object.values(dayOccurrences).forEach(({ idx, rev }) => {
+        if (!byDayIdx[idx]) byDayIdx[idx] = [];
+        byDayIdx[idx].push(rev);
+      });
+      const allDayRevs = Object.values(dayOccurrences).map(x => x.rev);
+      const overallAvg = allDayRevs.reduce((a, b) => a + b, 0) / (allDayRevs.length || 1);
+
+      const avgByIdx = {};
+      Object.entries(byDayIdx).forEach(([idx, revs]) => {
+        avgByIdx[idx] = revs.reduce((a, b) => a + b, 0) / revs.length;
+      });
+      const best = Object.entries(avgByIdx).sort((a, b) => b[1] - a[1])[0];
+      if (!best) return null;
+      const [bestIdx, bestAvg] = best;
+      if (bestAvg < overallAvg * 1.3) return null;
+
+      return {
+        title: `${dayNames[bestIdx]} is your highest revenue day`,
+        detail: `Average ${fmtI(bestAvg)} on ${dayNames[bestIdx]}s vs ${fmtI(overallAvg)} average per day overall. Consider protecting ${dayNames[bestIdx]} slots carefully.`,
+      };
+    },
+  },
+
+  {
+    id: 'revenue_concentration_risk',
+    enabled: true,
+    priority: 2,
+    category: 'WATCH',
+    evaluate(data) {
+      const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30); cutoff.setHours(0, 0, 0, 0);
+      const recent = data.filter(r => {
+        const d = parseDate(r['Date']); return d && d >= cutoff && parseNum(r['You Gave']) > 0;
+      });
+      if (!recent.length) return null;
+      const totalRev = recent.reduce((sum, r) => sum + parseNum(r['You Gave']), 0);
+      const byClient = {};
+      recent.forEach(r => {
+        const n = r['Customer Name'] || 'Unknown';
+        byClient[n] = (byClient[n] || 0) + parseNum(r['You Gave']);
+      });
+      const top3 = Object.entries(byClient).sort((a, b) => b[1] - a[1]).slice(0, 3);
+      const top3Total = top3.reduce((s, [, v]) => s + v, 0);
+      const pct = Math.round((top3Total / totalRev) * 100);
+      if (pct < INSIGHT_CONFIG.concentrationRiskPercent) return null;
+      const names = top3.map(([n]) => n);
+      return {
+        title: `Revenue concentration risk — top 3 clients = ${pct}%`,
+        detail: `${names.join(', ')} together = ${fmtI(top3Total)} of your last 30-day revenue (${fmtI(totalRev)} total). If one leaves, significant impact.`,
+        metric: `${pct}%`,
+        affectedClients: names,
+      };
+    },
+  },
+
+  {
+    id: 'week_over_week_drop',
+    enabled: true,
+    priority: 2,
+    category: 'WATCH',
+    evaluate(data) {
+      const thisWeek = getThisWeekRevenue(data);
+      const lastWeek = getLastWeekRevenue(data);
+      if (!lastWeek) return null;
+      const dropThreshold = 1 - INSIGHT_CONFIG.revenueDropPercent / 100;
+      if (thisWeek / lastWeek >= dropThreshold) return null;
+
+      const now = new Date();
+      const startThis = new Date(now); startThis.setDate(now.getDate() - now.getDay()); startThis.setHours(0, 0, 0, 0);
+      const startLast = new Date(startThis); startLast.setDate(startLast.getDate() - 7);
+
+      const thisClients = new Set(data.filter(r => {
+        const d = parseDate(r['Date']); return d && d >= startThis && parseNum(r['You Gave']) > 0;
+      }).map(r => r['Customer Name']));
+      const lastClients = new Set(data.filter(r => {
+        const d = parseDate(r['Date']); return d && d >= startLast && d < startThis && parseNum(r['You Gave']) > 0;
+      }).map(r => r['Customer Name']));
+      const missing = [...lastClients].filter(c => !thisClients.has(c));
+
+      const dropPct = Math.round((1 - thisWeek / lastWeek) * 100);
+      const missingStr = missing.length ? ` Main difference: ${missing.join(', ')} had no sessions this week.` : '';
+      return {
+        title: `Revenue down ${dropPct}% this week`,
+        detail: `${fmtI(thisWeek)} this week vs ${fmtI(lastWeek)} last week.${missingStr}`,
+        metric: `−${dropPct}%`,
+      };
+    },
+  },
+
+  {
+    id: 'strong_week',
+    enabled: true,
+    priority: 3,
+    category: 'POSITIVE',
+    evaluate(data) {
+      const thisWeek = getThisWeekRevenue(data);
+      const lastWeek = getLastWeekRevenue(data);
+      const threshold = 1 + INSIGHT_CONFIG.revenueRisePercent / 100;
+      if (!lastWeek || thisWeek < lastWeek * threshold) return null;
+
+      const now = new Date();
+      const start = new Date(now); start.setDate(now.getDate() - now.getDay()); start.setHours(0, 0, 0, 0);
+      const thisWeekRows = data.filter(r => {
+        const d = parseDate(r['Date']); return d && d >= start && parseNum(r['You Gave']) > 0;
+      });
+      const byClient = {};
+      thisWeekRows.forEach(r => {
+        const n = r['Customer Name'] || '?';
+        byClient[n] = (byClient[n] || 0) + parseNum(r['You Gave']);
+      });
+      const top = Object.entries(byClient).sort((a, b) => b[1] - a[1])[0];
+      const pct = Math.round(((thisWeek - lastWeek) / lastWeek) * 100);
+      return {
+        title: `Strong week — ${fmtI(thisWeek)} revenue so far`,
+        detail: `${pct}% above last week.${top ? ` Top contributor: ${top[0]} (${fmtI(top[1])}).` : ''}`,
+        metric: `+${pct}%`,
+      };
+    },
+  },
+
+  // --- GROUP 4: THERAPIST INSIGHTS ---
+
+  {
+    id: 'therapist_utilization_drop',
+    enabled: true,
+    priority: 2,
+    category: 'WATCH',
+    evaluate(data) {
+      const now = new Date();
+      const curM = MONTH_ORDER[now.getMonth()];
+      const curY = String(now.getFullYear());
+      const dayOfMonth  = now.getDate();
+      const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+
+      const therapists = [...new Set(
+        data.filter(r => parseNum(r['You Gave']) > 0).map(r => r['Therapist']).filter(Boolean)
+      )];
+      const results = [];
+
+      therapists.forEach(t => {
+        const thisMonthSess = data.filter(r =>
+          r['Therapist'] === t && r['Month'] === curM && String(r['Year']) === curY && parseNum(r['You Gave']) > 0
+        ).length;
+
+        const monthly = [];
+        for (let i = 1; i <= 3; i++) {
+          const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+          const m = MONTH_ORDER[d.getMonth()], y = String(d.getFullYear());
+          const c = data.filter(r => r['Therapist'] === t && r['Month'] === m && String(r['Year']) === y && parseNum(r['You Gave']) > 0).length;
+          if (c > 0) monthly.push(c);
+        }
+        if (!monthly.length) return;
+        const avg = monthly.reduce((a, b) => a + b, 0) / monthly.length;
+        const projected = dayOfMonth > 0 ? Math.round((thisMonthSess / dayOfMonth) * daysInMonth) : 0;
+        if (projected >= avg * (1 - INSIGHT_CONFIG.therapistDropPercent / 100)) return;
+
+        const daysLeft = daysInMonth - dayOfMonth;
+        const dropPct = Math.round(((avg - projected) / avg) * 100);
+        results.push({
+          title: `${t} sessions down ${dropPct}% this month`,
+          detail: `Usually ${Math.round(avg)} sessions/month, currently ${thisMonthSess} with ${daysLeft} days left. Check if slots are being filled.`,
+        });
+      });
+      return results.length ? results : null;
+    },
+  },
+
+  {
+    id: 'top_performing_therapist',
+    enabled: true,
+    priority: 3,
+    category: 'POSITIVE',
+    evaluate(data) {
+      const now = new Date();
+      const curM = MONTH_ORDER[now.getMonth()];
+      const curY = String(now.getFullYear());
+      const therapists = [...new Set(
+        data.filter(r => parseNum(r['You Gave']) > 0).map(r => r['Therapist']).filter(Boolean)
+      )];
+      if (therapists.length < 2) return null;
+
+      let best = null, bestNet = 0;
+      therapists.forEach(t => {
+        const rows = data.filter(r =>
+          r['Therapist'] === t && r['Month'] === curM && String(r['Year']) === curY && parseNum(r['You Gave']) > 0
+        );
+        const net = rows.reduce((s, r) => s + parseNum(r['You Gave']) - parseNum(r['Share']), 0);
+        if (net > bestNet) { best = { name: t, net, count: rows.length }; bestNet = net; }
+      });
+      if (!best || best.count === 0) return null;
+      const avgPerSess = Math.round(best.net / best.count);
+      return {
+        title: `${best.name} is your highest net contributor`,
+        detail: `${fmtI(best.net)} net profit from ${best.count} sessions this month. ${fmtI(avgPerSess)} per session average.`,
+        metric: fmtI(best.net),
+      };
+    },
+  },
+
+  {
+    id: 'therapist_payout_due',
+    enabled: true,
+    priority: 4,
+    category: 'INFO',
+    evaluate(data) {
+      const now = new Date();
+      const curM = MONTH_ORDER[now.getMonth()];
+      const curY = String(now.getFullYear());
+      const therapists = [...new Set(
+        data.filter(r => parseNum(r['You Gave']) > 0).map(r => r['Therapist']).filter(Boolean)
+      )];
+      if (!therapists.length) return null;
+      const payouts = therapists.map(t => {
+        const rows = data.filter(r =>
+          r['Therapist'] === t && r['Month'] === curM && String(r['Year']) === curY && parseNum(r['You Gave']) > 0
+        );
+        const share   = rows.reduce((s, r) => s + parseNum(r['Share']), 0);
+        const noShare = rows.filter(r => !parseNum(r['Share'])).length;
+        return { name: t, share, count: rows.length, noShare };
+      }).filter(p => p.count > 0);
+      if (!payouts.length) return null;
+      const total = payouts.reduce((s, p) => s + p.share, 0);
+      const lines = payouts.map(p =>
+        `${p.name}: ${fmtI(p.share)} (${p.count} session${p.count !== 1 ? 's' : ''}${p.noShare > 0 ? `, ${p.noShare} without share set` : ''})`
+      ).join('; ');
+      return {
+        title: `Therapist payouts due this month: ${fmtI(total)}`,
+        detail: lines,
+        metric: fmtI(total),
+      };
+    },
+  },
+
+  // --- GROUP 5: CLIENT MILESTONES & POSITIVES ---
+
+  {
+    id: 'long_term_loyal_client',
+    enabled: true,
+    priority: 3,
+    category: 'POSITIVE',
+    evaluate(data) {
+      const clients = [...new Set(
+        data.filter(r => parseNum(r['You Gave']) > 0).map(r => r['Customer Name']).filter(Boolean)
+      )];
+      const results = [];
+      clients.forEach(name => {
+        const dates = getSessionsForClient(data, name)
+          .map(r => parseDate(r['Date'])).filter(Boolean)
+          .sort((a, b) => a - b);
+        if (dates.length < 4) return;
+        const first = dates[0], last = dates[dates.length - 1];
+        const spanMonths = (last.getFullYear() - first.getFullYear()) * 12
+          + (last.getMonth() - first.getMonth());
+        if (spanMonths < INSIGHT_CONFIG.loyalClientMonths) return;
+        let hasLargeGap = false;
+        for (let i = 1; i < dates.length; i++) {
+          if ((dates[i] - dates[i - 1]) / 86400000 > INSIGHT_CONFIG.loyalClientMaxGapDays) {
+            hasLargeGap = true; break;
+          }
+        }
+        if (hasLargeGap) return;
+        const totalRev = getClientTotalRevenue(data, name);
+        results.push({
+          title: `${name} — ${spanMonths} months of consistent attendance`,
+          detail: `${dates.length} total sessions, ${fmtI(totalRev)} total revenue. One of your most reliable clients.`,
+          metric: `${spanMonths}mo`,
+          affectedClients: [name],
+        });
+      });
+      return results.length ? results : null;
+    },
+  },
+
+  {
+    id: 'high_lifetime_value_client',
+    enabled: true,
+    priority: 3,
+    category: 'POSITIVE',
+    evaluate(data) {
+      const clients = [...new Set(
+        data.filter(r => parseNum(r['You Gave']) > 0).map(r => r['Customer Name']).filter(Boolean)
+      )];
+      const results = [];
+      clients.forEach(name => {
+        const total = getClientTotalRevenue(data, name);
+        if (total < INSIGHT_CONFIG.highLifetimeValue) return;
+        const sessions = getClientSessionCount(data, name);
+        const firstDate = getClientFirstSessionDate(data, name);
+        const lastDate  = getLastSessionDate(data, name);
+        const fd = parseDate(firstDate), ld = parseDate(lastDate);
+        const spanMonths = fd && ld
+          ? (ld.getFullYear() - fd.getFullYear()) * 12 + (ld.getMonth() - fd.getMonth()) : 0;
+        const balance = getOutstandingBalance(data, name);
+        const balStr = balance < 0
+          ? `${fmtI(Math.abs(balance))} advance`
+          : balance === 0 ? 'settled' : `${fmtI(balance)} outstanding`;
+        results.push({
+          title: `${name} has crossed ${fmtI(INSIGHT_CONFIG.highLifetimeValue)} in lifetime value`,
+          detail: `${sessions} sessions over ${spanMonths} months. ${fmtI(total)} total billed. Current balance: ${balStr}.`,
+          metric: fmtI(total),
+          affectedClients: [name],
+        });
+      });
+      return results.length ? results : null;
+    },
+  },
+
+  {
+    id: 'client_returning_after_gap',
+    enabled: true,
+    priority: 3,
+    category: 'POSITIVE',
+    evaluate(data) {
+      const now = new Date(); now.setHours(0, 0, 0, 0);
+      const cut7 = new Date(now); cut7.setDate(now.getDate() - 7);
+      const clients = [...new Set(
+        data.filter(r => parseNum(r['You Gave']) > 0).map(r => r['Customer Name']).filter(Boolean)
+      )];
+      const results = [];
+      clients.forEach(name => {
+        const sessions = getSessionsForClient(data, name)
+          .map(r => ({ date: parseDate(r['Date']), raw: r }))
+          .filter(s => s.date)
+          .sort((a, b) => b.date - a.date);
+        if (sessions.length < 2) return;
+        const latest = sessions[0];
+        if (latest.date < cut7) return;
+        const prev  = sessions[1];
+        const gap = Math.floor((latest.date - prev.date) / 86400000);
+        if (gap <= INSIGHT_CONFIG.returningClientGapDays) return;
+        results.push({
+          title: `${name} returned after ${gap}-day gap`,
+          detail: `Back on ${formatDate(latest.raw['Date'])} after a break since ${formatDate(prev.raw['Date'])}. Good sign — consider checking in on goals.`,
+          action: `Follow up with ${name.split(' ')[0]}`,
+          affectedClients: [name],
+        });
+      });
+      return results.length ? results : null;
+    },
+  },
+
+  // --- GROUP 6: OPERATIONAL FLAGS ---
+
+  {
+    id: 'sessions_without_payment_logged',
+    enabled: true,
+    priority: 2,
+    category: 'WATCH',
+    evaluate(data) {
+      const cut7 = new Date(); cut7.setDate(cut7.getDate() - 7); cut7.setHours(0, 0, 0, 0);
+      const unlogged = data.filter(r => {
+        if (!parseNum(r['You Gave'])) return false;
+        if (parseNum(r['You Got']) > 0) return false;
+        const d = parseDate(r['Date']); if (!d || d >= cut7) return false;
+        return !data.some(r2 =>
+          r2['Customer Name'] === r['Customer Name'] &&
+          r2['Date'] === r['Date'] &&
+          parseNum(r2['You Got']) > 0
+        );
+      });
+      if (!unlogged.length) return null;
+      const clientNames = [...new Set(unlogged.map(r => r['Customer Name']).filter(Boolean))];
+      return {
+        title: `${unlogged.length} recent sessions with no payment recorded`,
+        detail: `Clients: ${clientNames.join(', ')}. Either payments weren't logged or are genuinely outstanding. Worth verifying.`,
+        metric: String(unlogged.length),
+        affectedClients: clientNames,
+      };
+    },
+  },
+
+  {
+    id: 'data_freshness_check',
+    enabled: true,
+    priority: 1,
+    category: 'URGENT',
+    evaluate(data) {
+      if (!data.length) return null;
+      const dates = data.map(r => parseDate(r['Date'])).filter(Boolean).sort((a, b) => b - a);
+      if (!dates.length) return null;
+      const last = dates[0];
+      const gap  = Math.floor((new Date() - last) / 86400000);
+      if (gap <= INSIGHT_CONFIG.dataFreshnessDays) return null;
+      const lastStr = last.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+      return {
+        title: `Data may be outdated — last entry: ${lastStr}`,
+        detail: `No sessions recorded in the last ${gap} days. If sessions happened, check if the sheet is being updated.`,
+        metric: `${gap} days`,
+      };
+    },
+  },
+
+  {
+    id: 'unusually_high_single_session',
+    enabled: true,
+    priority: 2,
+    category: 'WATCH',
+    evaluate(data) {
+      const cut14 = new Date(); cut14.setDate(cut14.getDate() - 14); cut14.setHours(0, 0, 0, 0);
+      const recent = data.filter(r => {
+        const d = parseDate(r['Date']); return d && d >= cut14 && parseNum(r['You Gave']) > 0;
+      });
+      const results = [];
+      recent.forEach(r => {
+        const name = r['Customer Name']; if (!name) return;
+        const amount = parseNum(r['You Gave']);
+        const allSess = getSessionsForClient(data, name);
+        if (allSess.length < 3) return;
+        const avg = allSess.reduce((s, x) => s + parseNum(x['You Gave']), 0) / allSess.length;
+        if (amount < avg * INSIGHT_CONFIG.unusualSessionMultiple) return;
+        results.push({
+          title: `Unusually high session value for ${name}`,
+          detail: `${fmtI(amount)} recorded on ${formatDate(r['Date'])} vs their usual ${fmtI(avg)}. Could be a bulk entry or data error. Worth checking.`,
+          metric: fmtI(amount),
+          affectedClients: [name],
+        });
+      });
+      return results.length ? results : null;
+    },
+  },
+
+]; // end INSIGHT_RULES
+
+// ── Engine — runs all enabled rules, sorts by priority ────────
+function runInsights(data) {
+  const all = [];
+  INSIGHT_RULES.forEach(rule => {
+    if (!rule.enabled) return;
+    try {
+      const result = rule.evaluate(data);
+      if (!result) return;
+      const items = Array.isArray(result) ? result : [result];
+      items.forEach(item => {
+        all.push({
+          ...item,
+          priority: item._priority !== undefined ? item._priority : rule.priority,
+          category: item._category !== undefined ? item._category : rule.category,
+          ruleId: rule.id,
+        });
+      });
+    } catch (e) {
+      console.error(`[Insights] Rule "${rule.id}" threw:`, e);
+    }
+  });
+  all.sort((a, b) => a.priority - b.priority);
+  return all.slice(0, INSIGHT_CONFIG.maxInsightsToShow);
+}
+
+// ── Renderer ───────────────────────────────────────────────────
+function renderInsights() {
+  const data    = getInsightsData();
+  const insights = runInsights(data);
+
+  const grid   = document.getElementById('insights-grid');
+  const header = document.getElementById('insights-count');
+  const meta   = document.getElementById('insights-checked');
+  if (!grid) return;
+
+  const timeStr = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  meta.textContent = `Last checked: ${timeStr}`;
+
+  if (!insights.length) {
+    header.textContent = 'All clear — no issues detected today 🎉';
+    grid.innerHTML = `
+      <div class="insights-empty">
+        <div class="empty-icon">🎉</div>
+        <p>All clear — no issues detected today.</p>
+        <p class="empty-sub">Last checked: ${timeStr}</p>
+      </div>`;
+  } else {
+    header.textContent = `${insights.length} insight${insights.length !== 1 ? 's' : ''} as of today`;
+    grid.innerHTML = insights.map(ins => {
+      const metricHtml = ins.metric
+        ? `<span class="insight-metric">${ins.metric}</span>` : '<span></span>';
+      const actionHtml = ins.action
+        ? `<button class="insight-action">${ins.action} →</button>` : '';
+      const footerHtml = (ins.metric || ins.action)
+        ? `<div class="insight-footer">${metricHtml}${actionHtml}</div>` : '';
+      return `
+        <div class="insight-card priority-${ins.priority}">
+          <div class="insight-top">
+            <span class="insight-badge ${ins.category}">${ins.category}</span>
+            <span class="insight-rule-id" title="Rule ID: ${ins.ruleId}">(i) ${ins.ruleId}</span>
+          </div>
+          <div class="insight-title">${ins.title}</div>
+          <div class="insight-detail">${ins.detail}</div>
+          ${footerHtml}
+        </div>`;
+    }).join('');
+  }
+
+  // Populate rules debug table
+  const activeCount   = INSIGHT_RULES.filter(r => r.enabled).length;
+  const disabledCount = INSIGHT_RULES.filter(r => !r.enabled).length;
+  const acEl = document.getElementById('rules-active-count');
+  const dcEl = document.getElementById('rules-disabled-count');
+  if (acEl) acEl.textContent = activeCount;
+  if (dcEl) dcEl.textContent = disabledCount;
+  const tbody = document.getElementById('rules-debug-tbody');
+  if (tbody) {
+    tbody.innerHTML = INSIGHT_RULES.map(r => `
+      <tr>
+        <td>${r.id}</td>
+        <td><span class="insight-badge ${r.category}">${r.category}</span></td>
+        <td class="${r.enabled ? 'rule-enabled' : 'rule-disabled'}">${r.enabled ? 'Active' : 'Disabled'}</td>
+      </tr>`).join('');
+  }
+}
+
+function toggleRulesDebug() {
+  const body = document.getElementById('rules-debug-body');
+  if (body) body.classList.toggle('open');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MASTER RENDER
+// ─────────────────────────────────────────────────────────────────────────────
+function render() {
+  computeKPIs(filteredRows);
+  // Home
+  renderTable();
+  // Monthly Trend
+  buildMonthlyTrend(filteredRows);
+  // Therapist
+  buildTherapistKPIs(filteredRows);
+  buildTherapistStackedChart(filteredRows);
+  buildTherapistSessionsChart(filteredRows);
+  // Customers
+  buildCustomerChart(filteredRows);
+  renderCustTable();
+  // Insights
+  renderInsights();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────────────────────────────
+async function init() {
+  const eb = document.getElementById('error-banner');
+  eb.style.display = 'none';
+  // Clear stale data immediately so old profile never bleeds through on error
+  allRowsRaw = []; allRows = []; filteredRows = [];
+  // Reset end date to today on every init (profile switch or refresh)
+  document.getElementById('filter-end-date').value = todayDateString();
+  // Sync smridhiIncludeAll from checkbox (don't reset — checkbox listener sets it before calling init)
+  smridhiIncludeAll = document.getElementById('filter-include-all').checked;
+  try {
+    const raw = await fetchAllData();
+    allRowsRaw   = raw.filter(r => r['Date'] || r['Customer Name']);
+    // Session rows: You Gave > 0
+    allRows      = allRowsRaw.filter(r => parseNum(r['You Gave']) > 0);
+    filteredRows = [...allRows];
+    populateFilters(allRows);
+    // Default to current month + year (AllSessions: no month pre-filter so future months show in projection)
+    const _now = new Date();
+    const _curMonth = MONTH_ORDER[_now.getMonth()];
+    const _curYear  = _now.getFullYear();
+    const _mSel = document.getElementById('filter-month');
+    const _ySel = document.getElementById('filter-year');
+    if (activeProfile !== 'allsessions') {
+      if ([..._mSel.options].some(o => o.value === _curMonth)) _mSel.value = _curMonth;
+    }
+    if ([..._ySel.options].some(o => String(o.value) === String(_curYear))) _ySel.value = _curYear;
+    applyFilters();
+    document.getElementById('last-updated').textContent =
+      'Updated: ' + new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
+  } catch(err) {
+    console.error(err);
+    eb.style.display = 'block';
+    const sheetHint = activeProfile === 'smridhi'
+      ? '<em>Smridhi Online</em>'
+      : activeProfile === 'allsessions'
+      ? '<em>DataCopySessions</em>'
+      : '<em>DataCopy</em> and <em>DataCopy 2026</em>';
+    eb.innerHTML = `<strong>Could not load data.</strong> Make sure ${sheetHint} sheet(s) are publicly readable
+      (Share → Anyone with the link → Viewer).<br/><small style="opacity:.7">${err.message}</small>`;
+  } finally {
+    document.getElementById('loading-overlay').style.display = 'none';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EVENT LISTENERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SHARE VIEW
+// ─────────────────────────────────────────────────────────────────────────────
+function openShareView() {
+  const rows = getTableRows(); // respects current sort + search
+  const f    = getFilterValues();
+
+  // Build subtitle from active filters
+  const parts = [];
+  if (f.therapist) parts.push(f.therapist);
+  if (f.month && f.year) parts.push(`${f.month} ${f.year}`);
+  else if (f.month)      parts.push(f.month);
+  else if (f.year)       parts.push(f.year);
+  if (f.customer)        parts.push(f.customer);
+  const subtitle = parts.length ? parts.join(' · ') : 'All sessions';
+
+  document.getElementById('share-modal-title').textContent = `Session List — ${subtitle}`;
+
+  const body = document.getElementById('share-body');
+  body.innerHTML = `
+    <div class="share-head">
+      <img src="https://capybaracare.in/wp-content/uploads/2025/07/Green-and-White-Elegant-India-Fashion-Brand-Logo-120-x-78-px-1-e1753250830504.png" alt="Capybara Care" />
+      <div class="share-head-text">
+        <div class="sh-name">${subtitle} · ${rows.length} session${rows.length !== 1 ? 's' : ''} · Due: ₹${rows.reduce((s,r) => s + parseNum(r['Share']), 0).toLocaleString('en-IN')}</div>
+      </div>
+    </div>
+    <div class="share-cols">
+      <div class="share-col-head">#</div>
+      <div class="share-col-head">Date</div>
+      <div class="share-col-head divider-left">Customer</div>
+      <div class="share-col-head">#</div>
+      <div class="share-col-head">Date</div>
+      <div class="share-col-head">Customer</div>
+      ${(() => {
+        // Split into left half (1..half) and right half (half+1..end), read top-to-bottom
+        const half = Math.ceil(rows.length / 2);
+        const left  = rows.slice(0, half);
+        const right = rows.slice(half);
+        let html = '';
+        for (let i = 0; i < half; i++) {
+          const even = i % 2 === 1 ? ' even' : '';
+          const L = left[i];
+          const R = right[i];
+          html += `
+            <div class="sc num${even}">${i + 1}</div>
+            <div class="sc date${even}">${L['Date'] || ''}</div>
+            <div class="sc divl${even}">${L['Customer Name'] || ''}</div>`;
+          if (R) {
+            html += `
+            <div class="sc num${even}">${half + i + 1}</div>
+            <div class="sc date${even}">${R['Date'] || ''}</div>
+            <div class="sc${even}">${R['Customer Name'] || ''}</div>`;
+          } else {
+            html += `<div class="sc${even}"></div><div class="sc${even}"></div><div class="sc${even}"></div>`;
+          }
+        }
+        return html;
+      })()}
+    </div>
+  `;
+
+  document.getElementById('share-modal').classList.add('open');
+}
+
+// Tabs
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// Global filters
+['filter-year','filter-month','filter-therapist','filter-customer','filter-calendar','filter-end-date'].forEach(id =>
+  document.getElementById(id).addEventListener('change', applyFilters)
+);
+
+// Include All — re-fetches data (needs Capybara sheets)
+document.getElementById('filter-include-all').addEventListener('change', function() {
+  smridhiIncludeAll = this.checked;
+  document.getElementById('loading-overlay').style.display = 'flex';
+  init();
+});
+
+// Refresh
+document.getElementById('refresh-btn').addEventListener('click', () => {
+  document.getElementById('loading-overlay').style.display = 'flex';
+  init();
+});
+
+// Profile switch
+function setProfile(profileKey) {
+  activeProfile = profileKey;
+  // Reset include-all when switching profiles
+  smridhiIncludeAll = false;
+  document.getElementById('filter-include-all').checked = false;
+  document.getElementById('profile-select').value = profileKey;
+  document.getElementById('header-brand').textContent = PROFILES[profileKey].label;
+  document.getElementById('header-sub').textContent   =
+    profileKey === 'smridhi'     ? 'Smridhi Online · Revenue Dashboard'  :
+    profileKey === 'allsessions' ? 'All Sessions · Revenue Dashboard'    :
+                                   'Revenue Dashboard';
+  document.getElementById('loading-overlay').style.display = 'flex';
+  init();
+}
+document.getElementById('profile-select').addEventListener('change', function() {
+  setProfile(this.value);
+});
+
+// Main table search & sort
+document.getElementById('table-search').addEventListener('input', () => { page = 1; renderTable(); });
+document.querySelectorAll('thead th[data-col]').forEach(th => {
+  th.addEventListener('click', () => {
+    if (sortCol === th.dataset.col) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    else { sortCol = th.dataset.col; sortDir = 'asc'; }
+    renderTable();
+  });
+});
+document.getElementById('btn-prev').addEventListener('click', () => { page--; renderTable(); });
+document.getElementById('btn-next').addEventListener('click', () => { page++; renderTable(); });
+document.getElementById('page-size').addEventListener('change', e => {
+  PAGE = parseInt(e.target.value); page = 1; renderTable();
+});
+
+// Customer table search & sort
+document.getElementById('cust-search').addEventListener('input', () => { custPage = 1; renderCustTable(); });
+document.querySelectorAll('thead th[data-tab="cust"]').forEach(th => {
+  th.addEventListener('click', () => {
+    if (custSortCol === th.dataset.col) custSortDir = custSortDir === 'asc' ? 'desc' : 'asc';
+    else { custSortCol = th.dataset.col; custSortDir = 'asc'; }
+    renderCustTable();
+  });
+});
+document.getElementById('cust-btn-prev').addEventListener('click', () => { custPage--; renderCustTable(); });
+document.getElementById('cust-btn-next').addEventListener('click', () => { custPage++; renderCustTable(); });
+document.getElementById('cust-page-size').addEventListener('change', e => {
+  PAGE = parseInt(e.target.value); custPage = 1; renderCustTable();
+});
+
+// Share modal open/close
+document.getElementById('share-view-btn').addEventListener('click', openShareView);
+document.getElementById('share-close').addEventListener('click', () => {
+  document.getElementById('share-modal').classList.remove('open');
+});
+document.getElementById('share-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('share-modal'))
+    document.getElementById('share-modal').classList.remove('open');
+});
+
+init();
+</script>
+</body>
+</html>
