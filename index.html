@@ -1471,6 +1471,14 @@ body.dark .agenda-event-location { color: #666; }
     </div>
 
     <div class="settings-section">
+      <h3>Messaging</h3>
+      <div class="settings-row">
+        <span>WhatsApp Links</span>
+        <label class="toggle-switch"><input type="checkbox" id="wa-mode-chk"><span class="slider"></span></label>
+      </div>
+    </div>
+
+    <div class="settings-section">
       <h3>Layout</h3>
       <p style="font-size:11px;color:#888;line-height:1.5;margin:0">Drag the right edge of a day header to resize a column. Double-click the handle to reset just that column. Widths are saved per view (Day / 3 Days / Week / By Client / One Client).</p>
       <button class="btn-cancel" id="reset-col-widths-btn" style="width:100%;margin-top:4px">Reset widths for current view</button>
@@ -1486,8 +1494,9 @@ body.dark .agenda-event-location { color: #666; }
 // Authorised redirect URIs.
 const CLIENT_ID = '593921280096-38ohg1bghcihdb4ctpfacg3e0sdd4rtg.apps.googleusercontent.com';
 const CLIENT_SECRET = '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';
+const SHEET_ID = '1JeaSJvMTJ1aUGwMrQ62-6V2v8ZWfypb24QbJYbUb5Rs';
 
-const SCOPES = 'https://www.googleapis.com/auth/calendar';
+const SCOPES = 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/spreadsheets.readonly';
 const REDIRECT_URI = location.origin + location.pathname;
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
@@ -1520,6 +1529,12 @@ let ribbonMinimized = false;     // mobile: collapse topbar-row1
 let colorByTherapist = false;    // color events by therapist name (from "Client - Type - Therapist" titles)
 let hiddenTherapists = new Set(); // therapist names to hide in filter
 let hideTentative = false;        // hide tentative events (when not in clone/diary mode)
+let waMode = false;               // when true, copy buttons open wa.me links instead of clipboard
+let contactsCache = new Map();    // childName.toLowerCase() -> { phone, template }
+let namedTemplates = new Map([
+  ['_default_template',       "Hi! {name}'s sessions {date}:\n\n{sessions}\n\nSee you!"],
+  ['_default_group_template', "Hi! {name}'s sessions {date}:\n\n{sessions}\n\nSee you!"],
+]);
 
 // ── PREFERENCES (localStorage) ───────────────────────────────────────────────
 const PREF_KEY = 'calview_prefs';
@@ -1551,6 +1566,7 @@ function savePrefs() {
     hiddenTherapists: [...hiddenTherapists],
     hideTentative,
     diaryReconcile,
+    waMode,
   }));
 }
 function loadPrefs() {
@@ -1929,6 +1945,38 @@ async function fetchCalendarList() {
   return (data.items || []).filter(c => c.accessRole !== 'none');
 }
 
+async function fetchSheetData() {
+  try {
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/Clients`;
+    const data = await apiGet(url);
+    const rows = data.values || [];
+    if (!rows.length) return;
+
+    const headers = rows[0].map(h => h.trim().toLowerCase());
+    const col = name => headers.indexOf(name.toLowerCase());
+    const iName     = col('customer name');
+    const iPhone    = col('phone');
+    const iTemplate = col('template');
+    if (iName < 0 || iPhone < 0) { console.warn('Clients sheet: missing required columns'); return; }
+
+    contactsCache.clear();
+    namedTemplates = new Map([
+      ['_default_template',       "Hi! {name}'s sessions {date}:\n\n{sessions}\n\nSee you!"],
+      ['_default_group_template', "Hi! {name}'s sessions {date}:\n\n{sessions}\n\nSee you!"],
+    ]);
+    rows.slice(1).forEach(row => {
+      const name = (row[iName] || '').trim();
+      if (!name) return;
+      const phone    = (row[iPhone]    || '').trim().replace(/\D/g, '');
+      const template = iTemplate >= 0 ? (row[iTemplate] || '').trim() : '';
+      if (name.endsWith('_template')) { if (template) namedTemplates.set(name, template); return; }
+      contactsCache.set(name.toLowerCase(), { phone: phone || null, template: template || null });
+    });
+  } catch (e) {
+    console.warn('Contacts sheet fetch failed:', e.message);
+  }
+}
+
 // ── EVENTS ────────────────────────────────────────────────────────────────────
 async function fetchEvents(calId, timeMin, timeMax) {
   const events = [];
@@ -2077,6 +2125,8 @@ async function initApp() {
     return;
   }
 
+  await fetchSheetData();
+
   // Restore preferences
   const prefs = loadPrefs();
   const allIds = calendarList.map(c => c.id);
@@ -2133,6 +2183,7 @@ async function initApp() {
     if (Array.isArray(prefs.hiddenTherapists)) hiddenTherapists = new Set(prefs.hiddenTherapists);
     if (typeof prefs.hideTentative === 'boolean') hideTentative = prefs.hideTentative;
     if (typeof prefs.diaryReconcile === 'boolean') diaryReconcile = prefs.diaryReconcile;
+    if (typeof prefs.waMode === 'boolean') waMode = prefs.waMode;
   } else {
     enabledCalendars = new Set(allIds);
     activeCalendars  = new Set(allIds);
@@ -2664,23 +2715,24 @@ function renderGrid() {
         // Copy button
         const copyBtn = document.createElement('button');
         copyBtn.className = 'ev-copy-btn';
-        copyBtn.title = 'Copy reminder message';
+        copyBtn.title = waMode ? 'Send WhatsApp reminder' : 'Copy reminder message';
         copyBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="9" height="11" rx="1.5"/><path d="M3 4H2a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1"/></svg>';
-        const getAllDayEvsForChild = () => {
-          // Gather events from ALL calendars for this day, then filter to this child
+        const getRawEvs = () => {
           const dateStr = fmtDate(d);
-          const allEvs = Object.values(cachedEvents).flat().filter(x => fmtDate(x.start) === dateStr);
-          return buildReminderMessage(ev, d, allEvs);
+          return Object.values(cachedEvents).flat().filter(x => fmtDate(x.start) === dateStr);
         };
         copyBtn.addEventListener('mouseenter', e => {
           e.stopPropagation();
-          showTooltip(e, null, null, getAllDayEvsForChild());
+          const allEvs = getRawEvs();
+          showTooltip(e, null, null, waMode ? buildWhatsAppMessage(ev, d, allEvs) : buildReminderMessage(ev, d, allEvs));
         });
         copyBtn.addEventListener('mousemove', e => { e.stopPropagation(); moveTooltip(e); });
         copyBtn.addEventListener('mouseleave', e => { e.stopPropagation(); hideTooltip(); });
         copyBtn.addEventListener('click', e => {
           e.stopPropagation();
-          copyToClipboard(copyBtn, getAllDayEvsForChild());
+          const allEvs = getRawEvs();
+          if (waMode) openWhatsApp(copyBtn, ev, d, allEvs);
+          else copyToClipboard(copyBtn, buildReminderMessage(ev, d, allEvs));
         });
         evEl.appendChild(copyBtn);
 
@@ -3334,16 +3386,22 @@ function renderSingleClientGrid() {
       // Copy button (same as normal view)
       const copyBtn = document.createElement('button');
       copyBtn.className = 'ev-copy-btn';
-      copyBtn.title = 'Copy reminder message';
+      copyBtn.title = waMode ? 'Send WhatsApp reminder' : 'Copy reminder message';
       copyBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="9" height="11" rx="1.5"/><path d="M3 4H2a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1"/></svg>';
-      const getAllDayMsg = () => {
-        const dateEvs = Object.values(cachedEvents).flat().filter(x => fmtDate(x.start) === dateStr);
-        return buildReminderMessage(ev, d, dateEvs);
-      };
-      copyBtn.addEventListener('mouseenter', e => { e.stopPropagation(); showTooltip(e, null, null, getAllDayMsg()); });
+      const getSingleRawEvs = () => Object.values(cachedEvents).flat().filter(x => fmtDate(x.start) === dateStr);
+      copyBtn.addEventListener('mouseenter', e => {
+        e.stopPropagation();
+        const dateEvs = getSingleRawEvs();
+        showTooltip(e, null, null, waMode ? buildWhatsAppMessage(ev, d, dateEvs) : buildReminderMessage(ev, d, dateEvs));
+      });
       copyBtn.addEventListener('mousemove',  e => { e.stopPropagation(); moveTooltip(e); });
       copyBtn.addEventListener('mouseleave', e => { e.stopPropagation(); hideTooltip(); });
-      copyBtn.addEventListener('click',      e => { e.stopPropagation(); copyToClipboard(copyBtn, getAllDayMsg()); });
+      copyBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        const dateEvs = getSingleRawEvs();
+        if (waMode) openWhatsApp(copyBtn, ev, d, dateEvs);
+        else copyToClipboard(copyBtn, buildReminderMessage(ev, d, dateEvs));
+      });
       evEl.appendChild(copyBtn);
 
       // Tooltip shows real full title
@@ -3428,6 +3486,77 @@ function buildReminderMessage(clickedEv, dayDate, allDayEvents) {
 
   const firstName = childName.split(' ')[0];
   return `Hi! ${firstName}'s sessions ${whenWord}:\n\n${lines}\n\nSee you!`;
+}
+
+function buildWhatsAppMessage(clickedEv, dayDate, allDayEvents) {
+  const pad = n => String(n).padStart(2, '0');
+  const { childName } = parseEventTitle(clickedEv.title);
+
+  const dayAbbr  = DAY_ABBR[dayDate.getDay()];
+  const d        = dayDate.getDate();
+  const monAbbr  = MONTH_ABR[dayDate.getMonth()];
+  const today    = startOfToday();
+  const tomorrow = addDays(today, 1);
+  const dayFmt   = fmtDate(dayDate);
+  let whenWord;
+  if      (dayFmt === fmtDate(today))    whenWord = `today (${dayAbbr}, ${d} ${monAbbr})`;
+  else if (dayFmt === fmtDate(tomorrow)) whenWord = `tomorrow (${dayAbbr}, ${d} ${monAbbr})`;
+  else                                   whenWord = `on ${dayAbbr}, ${d} ${monAbbr}`;
+
+  const childEvs = allDayEvents
+    .filter(ev => {
+      if (hideTentative && !permissions.clone && ev.isTentative) return false;
+      const { childName: p0 } = parseEventTitle(ev.title);
+      if (p0 === childName) return true;
+      if (cvIsShared(ev)) return p0.split(',').map(s => s.trim()).some(n => n === childName);
+      return false;
+    })
+    .sort((a, b) => a.start - b.start);
+
+  const sessions = childEvs.map(ev => {
+    const h    = ev.start.getHours();
+    const m    = pad(ev.start.getMinutes());
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12  = pad(h % 12 || 12);
+    const { therapyType } = parseEventTitle(ev.title);
+    const link = ev.meetLink ? `\n${ev.meetLink}` : '';
+    return `${h12}:${m} ${ampm} - ${therapyType}${link}`;
+  }).join('\n');
+
+  const firstName = childName.split(' ')[0];
+  const contact   = contactsCache.get(childName.toLowerCase());
+  const tmplKey   = contact?.template || '';
+  let tmpl;
+  if (!tmplKey)                        tmpl = namedTemplates.get('_default_template') || "Hi! {name}'s sessions {date}:\n\n{sessions}\n\nSee you!";
+  else if (namedTemplates.has(tmplKey)) tmpl = namedTemplates.get(tmplKey);
+  else                                  tmpl = tmplKey;
+
+  const firstEv    = childEvs[0];
+  const time       = firstEv ? fmtTime(firstEv.start).toLowerCase() : '';
+  const { therapyType: service } = firstEv ? parseEventTitle(firstEv.title) : {};
+  const therapist  = firstEv ? (firstEv.title.split(' - ')[2] || '').trim() : '';
+
+  return tmpl
+    .replace(/\{name\}/g,      firstName)
+    .replace(/\{date\}/g,      whenWord)
+    .replace(/\{sessions\}/g,  sessions)
+    .replace(/\{time\}/g,      time)
+    .replace(/\{service\}/g,   service || '')
+    .replace(/\{therapist\}/g, therapist);
+}
+
+function openWhatsApp(btn, clickedEv, dayDate, allDayEvents) {
+  const { childName } = parseEventTitle(clickedEv.title);
+  const contact = contactsCache.get(childName.toLowerCase());
+  const phone   = contact?.phone || '';
+  const text    = buildWhatsAppMessage(clickedEv, dayDate, allDayEvents);
+  const url     = phone
+    ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}`
+    : `https://wa.me?text=${encodeURIComponent(text)}`;
+  window.open(url, '_blank', 'noopener');
+  const orig = btn.innerHTML;
+  btn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 8 6 12 14 4"/></svg>';
+  setTimeout(() => { btn.innerHTML = orig; }, 1500);
 }
 
 async function copyToClipboard(btn, text) {
@@ -4071,6 +4200,9 @@ function openSettings() {
   // Appearance
   document.getElementById('settings-dark-mode').checked = document.body.classList.contains('dark');
   document.getElementById('settings-color-therapist').checked = colorByTherapist;
+
+  // Messaging
+  document.getElementById('wa-mode-chk').checked = waMode;
 
   // Populate client view toggles
   document.getElementById('client-view-enabled-chk').checked   = clientViewEnabled;
@@ -4948,6 +5080,13 @@ document.getElementById('settings-color-therapist').addEventListener('change', e
   renderGrid();
 });
 
+// ── WHATSAPP MODE ─────────────────────────────────────────────────────────────
+document.getElementById('wa-mode-chk').addEventListener('change', e => {
+  waMode = e.target.checked;
+  savePrefs();
+  renderGrid();
+});
+
 document.getElementById('gear-btn').addEventListener('click', openSettings);
 document.getElementById('settings-backdrop').addEventListener('click', e => { if (e.target === e.currentTarget) closeSettings(); });
 document.getElementById('reset-col-widths-btn').addEventListener('click', () => {
@@ -5075,6 +5214,7 @@ setInterval(() => {
       hideTentative = prefs.hideTentative;
       applyTentativeState();
     }
+    if (typeof prefs.waMode === 'boolean') waMode = prefs.waMode;
     if (typeof prefs.ribbonMinimized === 'boolean' && prefs.ribbonMinimized) {
       ribbonMinimized = true;
       const row1 = document.querySelector('.topbar-row1');
