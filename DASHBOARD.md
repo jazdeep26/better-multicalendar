@@ -6,10 +6,20 @@ A single-page HTML dashboard that pulls session and payment data from two Google
 
 ## Building / Publishing
 
-Edit `dashboard_src.html` (unencrypted source — gitignored). Then encrypt and publish:
+Edit `dashboard_src.html` (unencrypted source — gitignored). Then encrypt and publish.
+
+**Password** is in `.env.local` (gitignored): `STATICRYPT_PASSWORD=...`
+
+**Full workflow (what Claude should do after editing `dashboard_src.html`):**
 
 ```bash
-npx staticrypt dashboard_src.html -p YOUR_PASSWORD --short && cp encrypted/dashboard_src.html dashboard.html
+# Read password from .env.local, encrypt, copy, commit, push
+source .env.local && \
+npx staticrypt dashboard_src.html -p $STATICRYPT_PASSWORD --short && \
+cp encrypted/dashboard_src.html dashboard.html && \
+git add dashboard.html && \
+git commit -m "..." && \
+git push
 ```
 
 - `dashboard_src.html` → source file to edit (unencrypted, gitignored)
@@ -22,7 +32,7 @@ The `-o` flag does **not** exist in this version of staticrypt — always use th
 
 **To recover the source if it gets overwritten:**
 ```bash
-npx staticrypt --decrypt dashboard_src.html -p YOUR_PASSWORD -d decrypted
+source .env.local && npx staticrypt --decrypt dashboard_src.html -p $STATICRYPT_PASSWORD -d decrypted
 cp decrypted/dashboard_src.html dashboard_src.html
 ```
 
