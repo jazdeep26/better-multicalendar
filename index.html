@@ -3990,10 +3990,28 @@ function updateReceiptBtnVisibility(inputEl) {
   btn.style.display = (isPaid && v && parseInt(v) > 0) ? '' : 'none';
 }
 
+// Look up a contact in contactsCache. Falls back to a first-name match
+// when the event title uses a short form (e.g. event "Naksh" vs sheet
+// "Naksh Gambhir"). Returns the matched entry only if the first-name
+// match is unique — otherwise empty, so receipt fields stay blank for
+// the user to review instead of guessing wrong.
+function lookupContact(name) {
+  if (!name) return {};
+  const lower = name.toLowerCase().trim();
+  if (contactsCache.has(lower)) return contactsCache.get(lower);
+  const firstToken = lower.split(/\s+/)[0];
+  if (!firstToken) return {};
+  const matches = [];
+  for (const [key, val] of contactsCache) {
+    if (key.split(/\s+/)[0] === firstToken) matches.push(val);
+  }
+  return matches.length === 1 ? matches[0] : {};
+}
+
 function openReceiptForClient(clientName, amount) {
   const ev = modalEventRef;
   if (!ev || !clientName || !amount) return;
-  const contact = contactsCache.get(clientName.toLowerCase()) || {};
+  const contact = lookupContact(clientName);
   const dateStr = (() => {
     const d = new Date(ev.start);
     const y = d.getFullYear();

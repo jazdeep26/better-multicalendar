@@ -124,6 +124,8 @@ Each "Paid" row in the event edit modal exposes a small 🧾 icon (visible only 
 
 Visibility is wired through `updateReceiptBtnVisibility(inputEl)` (shows when paid checkbox is on AND amount > 0). The Paid toggle's `togglePaidAmount()` re-evaluates all receipt buttons when checked/unchecked.
 
+**Name fallback**: `lookupContact(name)` first tries an exact match in `contactsCache`. If none, it falls back to a unique first-name match — so an event titled `"Naksh - OT - Deepa"` will still find the Clients row `Naksh Gambhir`. Returns `{}` when the first-name is ambiguous (multiple clients share it), so the receipt opens with blank parent/rate fields rather than the wrong client's data.
+
 ## Tentative events
 
 - Stored as a `"Tentative"` line prepended to the event description in Google Calendar (so it survives a round-trip and is human-readable in the native UI).
