@@ -83,6 +83,47 @@ The app assumes events follow `"ChildName - TherapyType - Therapist"`:
 - A "shared" event is one where the child slot contains a comma or `++` ([`cvIsShared`](index.html#L1747)) — used to detect Group / Lunch / Break events that involve multiple kids.
 - The reminder-message generator ([`buildReminderMessage`](index.html#L2266)) builds a formatted "Hi! {child}'s sessions today/tomorrow/on {date}: …" text block listing all of one child's sessions for a day, including any group events they're part of. Triggered by the small copy icon on every event — copies to clipboard.
 
+## Clients sheet integration
+
+The app reads a `Clients` tab from a Google Sheet (`SHEET_ID` constant) via `fetchSheetData()` ([index.html:1948](index.html#L1948)) to enrich events with contact info and rate metadata.
+
+**Columns read** (header names are case-insensitive):
+
+| Column | Required | Use |
+|---|---|---|
+| `customer name` | yes | Match key against event title's first segment |
+| `phone` | yes | WhatsApp reminder link (`wa.me/{phone}`) |
+| `template` | no | Per-client reminder message override; also used to detect SRP/monthly clients (template name contains `"srp"`) |
+| `parent name` | no | Parent/guardian name — passed to receipt generator |
+| `rate amount` | no | Per-session rate (integer ₹) — used to infer session count for receipts |
+| `rate type` | no | One of: `per_session`, `flat_service:ABA`, `daily`, `daily_equal`. `daily` / `daily_equal` mean monthly SRP billing; everything else is per session |
+
+Rows whose name ends with `_template` are loaded as named reminder templates instead of as contacts (`_default_template`, `_default_group_template`, `_default_srp_template`, etc.).
+
+If diagnosis ever needs to be auto-filled on receipts, add a `diagnosis` column to the `Clients` tab and extend `fetchSheetData()` + the receipt URL params accordingly.
+
+## Receipt generator integration
+
+Each "Paid" row in the event edit modal exposes a small 🧾 icon (visible only when an amount > 0 is present) that opens the Capybara Care receipt generator (`https://capybara-care.vercel.app/tools/receipt-generator`) in a new tab, pre-filled via URL query string params.
+
+**For group events** (multi-client title like `"Aria, Ben - Group"`), each row in the per-client paid grid (`buildMultiPaidRows`) gets its own 🧾 icon — generating a separate receipt per client using that client's individual amount and rate metadata.
+
+**Helper**: `openReceiptForClient(clientName, amount)` ([index.html](index.html)) — looks up the client in `contactsCache`, derives the calendar summary and therapy type from the event, then opens the receipt URL with these params:
+
+| Param | Source |
+|---|---|
+| `child` | client name from row / event title |
+| `amount` | paid amount input |
+| `date` | event start date (`YYYY-MM-DD`, local) |
+| `parent` | `contactsCache[name].parentName` (if present) |
+| `rateAmount` | `contactsCache[name].rateAmount` (if present) |
+| `rateType` | `contactsCache[name].rateType` (if present) |
+| `template` | `contactsCache[name].template` (if present) — receipt-generator inspects for `srp` substring |
+| `cal` | Calendar summary (`ot`, `ot2`, `online`, `speech`, `aba`) for service mapping |
+| `therapy` | `parts[1]` of event title — fallback label |
+
+Visibility is wired through `updateReceiptBtnVisibility(inputEl)` (shows when paid checkbox is on AND amount > 0). The Paid toggle's `togglePaidAmount()` re-evaluates all receipt buttons when checked/unchecked.
+
 ## Tentative events
 
 - Stored as a `"Tentative"` line prepended to the event description in Google Calendar (so it survives a round-trip and is human-readable in the native UI).

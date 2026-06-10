@@ -1369,7 +1369,11 @@ body.dark .agenda-event-location { color: #666; }
       </label>
       <label for="modal-evt-paid">Paid</label>
       <input type="number" id="modal-evt-paid-amount" placeholder="Amount (optional)" min="0" step="1"
+        oninput="updateReceiptBtnVisibility(this)"
         style="display:none;margin-left:12px;width:160px;border:1px solid #d1d5db;border-radius:6px;padding:5px 8px;font-size:13px;">
+      <button type="button" class="btn-receipt" title="Generate Receipt"
+        onclick="openReceiptForClient((getClientsFromTitle(modalEventRef?.title || '')?.[0]) || (modalEventRef?.title || '').split(' - ')[0]?.trim(), document.getElementById('modal-evt-paid-amount').value)"
+        style="display:none;margin-left:8px;border:none;background:transparent;cursor:pointer;font-size:18px;padding:2px 4px;line-height:1;">🧾</button>
     </div>
     <!-- Multi-client paid grid (shown instead of single amount when event has multiple clients) -->
     <div id="modal-paid-multi" style="display:none;margin-top:6px;margin-left:4px;">
@@ -1957,6 +1961,9 @@ async function fetchSheetData() {
     const iName     = col('customer name');
     const iPhone    = col('phone');
     const iTemplate = col('template');
+    const iParent   = col('parent name');
+    const iRateAmt  = col('rate amount');
+    const iRateType = col('rate type');
     if (iName < 0 || iPhone < 0) { console.warn('Clients sheet: missing required columns'); return; }
 
     contactsCache.clear();
@@ -1967,10 +1974,19 @@ async function fetchSheetData() {
     rows.slice(1).forEach(row => {
       const name = (row[iName] || '').trim();
       if (!name) return;
-      const phone    = (row[iPhone]    || '').trim().replace(/\D/g, '');
-      const template = iTemplate >= 0 ? (row[iTemplate] || '').trim() : '';
+      const phone      = (row[iPhone]    || '').trim().replace(/\D/g, '');
+      const template   = iTemplate >= 0 ? (row[iTemplate] || '').trim() : '';
+      const parentName = iParent   >= 0 ? (row[iParent]   || '').trim() : '';
+      const rateAmtRaw = iRateAmt  >= 0 ? (row[iRateAmt]  || '').trim() : '';
+      const rateType   = iRateType >= 0 ? (row[iRateType] || '').trim().toLowerCase() : '';
       if (name.endsWith('_template')) { if (template) namedTemplates.set(name, template); return; }
-      contactsCache.set(name.toLowerCase(), { phone: phone || null, template: template || null });
+      contactsCache.set(name.toLowerCase(), {
+        phone:      phone || null,
+        template:   template || null,
+        parentName: parentName || null,
+        rateAmount: rateAmtRaw ? (parseInt(rateAmtRaw.replace(/\D/g, '')) || null) : null,
+        rateType:   rateType || null,
+      });
     });
   } catch (e) {
     console.warn('Contacts sheet fetch failed:', e.message);
@@ -3912,6 +3928,7 @@ function openEditModal(ev) {
     document.getElementById('modal-evt-paid').checked = !!ev.isPaid;
     document.getElementById('modal-evt-paid-amount').value = ev.paidAmount != null ? ev.paidAmount : '';
     document.getElementById('modal-evt-paid-amount').style.display = ev.isPaid ? '' : 'none';
+    updateReceiptBtnVisibility(document.getElementById('modal-evt-paid-amount'));
   }
   document.getElementById('modal-delete-btn').style.display = permissions.delete ? '' : 'none';
   modalPrevStartVal = getModalDateTime('start');
@@ -3950,10 +3967,56 @@ function togglePaidAmount() {
   const isMulti   = multiDiv.dataset.active === '1';
   if (isMulti) {
     multiDiv.style.display = checked ? '' : 'none';
+    if (!checked) {
+      document.querySelectorAll('#modal-paid-multi-rows .btn-receipt').forEach(b => b.style.display = 'none');
+    } else {
+      document.querySelectorAll('#modal-paid-multi-rows input[data-client]').forEach(updateReceiptBtnVisibility);
+    }
   } else {
     document.getElementById('modal-evt-paid-amount').style.display = checked ? '' : 'none';
     if (!checked) document.getElementById('modal-evt-paid-amount').value = '';
+    updateReceiptBtnVisibility(document.getElementById('modal-evt-paid-amount'));
   }
+}
+
+const RECEIPT_URL_BASE = 'https://capybara-care.vercel.app/tools/receipt-generator';
+
+function updateReceiptBtnVisibility(inputEl) {
+  if (!inputEl) return;
+  const btn = inputEl.parentElement?.querySelector('.btn-receipt');
+  if (!btn) return;
+  const v = (inputEl.value || '').trim();
+  const isPaid = document.getElementById('modal-evt-paid').checked;
+  btn.style.display = (isPaid && v && parseInt(v) > 0) ? '' : 'none';
+}
+
+function openReceiptForClient(clientName, amount) {
+  const ev = modalEventRef;
+  if (!ev || !clientName || !amount) return;
+  const contact = contactsCache.get(clientName.toLowerCase()) || {};
+  const dateStr = (() => {
+    const d = new Date(ev.start);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const da = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${da}`;
+  })();
+  const { therapyType } = parseEventTitle(ev.title);
+  const cal = calendarList.find(c => c.id === ev.calId);
+  const calSummary = (cal?.summary || '').toLowerCase();
+
+  const params = new URLSearchParams();
+  params.set('child',  clientName);
+  params.set('amount', String(amount));
+  params.set('date',   dateStr);
+  if (contact.parentName) params.set('parent',     contact.parentName);
+  if (contact.rateAmount) params.set('rateAmount', String(contact.rateAmount));
+  if (contact.rateType)   params.set('rateType',   contact.rateType);
+  if (contact.template)   params.set('template',   contact.template);
+  if (calSummary)         params.set('cal',        calSummary);
+  if (therapyType)        params.set('therapy',    therapyType);
+
+  window.open(`${RECEIPT_URL_BASE}?${params.toString()}`, '_blank', 'noopener');
 }
 
 // Returns comma-separated client names from a multi-client event title (first segment)
@@ -3974,9 +4037,17 @@ function buildMultiPaidRows(clients, paidClients) {
       <span style="min-width:90px;font-size:13px;color:#374151;">${escHtml(name)}</span>
       <input type="number" data-client="${escHtml(name)}" placeholder="Amount (blank = not paid)"
         min="0" step="1" value="${existingAmt}"
+        oninput="updateReceiptBtnVisibility(this)"
         style="width:180px;border:1px solid #d1d5db;border-radius:6px;padding:5px 8px;font-size:13px;">
+      <button type="button" class="btn-receipt" title="Generate Receipt"
+        data-client="${escHtml(name)}"
+        style="display:none;border:none;background:transparent;cursor:pointer;font-size:18px;padding:2px 4px;line-height:1;">🧾</button>
     `;
     container.appendChild(row);
+    const inp = row.querySelector('input[data-client]');
+    const btn = row.querySelector('button.btn-receipt');
+    btn.addEventListener('click', () => openReceiptForClient(name, inp.value));
+    updateReceiptBtnVisibility(inp);
   });
 }
 
