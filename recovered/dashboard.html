@@ -406,7 +406,7 @@
 <header>
   <div class="header-left">
     <img class="logo" id="header-logo"
-      src="https://capybaracare.in/wp-content/uploads/2025/07/Green-and-White-Elegant-India-Fashion-Brand-Logo-120-x-78-px-1-e1753250830504.png"
+      src="https://www.capybaracare.in/images/capybara-logo-wide.png"
       alt="Capybara Care" />
     <div class="header-title">
       <span class="brand" id="header-brand">Capybara Care</span>
@@ -727,9 +727,9 @@ const SHEET_SESSIONS  = 'DataCopySessions'; // All Sessions profile
 let _gvizReqId = 0;
 
 const PROFILES = {
-  capybara:    { label: 'Capybara Care',   logo: 'https://capybaracare.in/wp-content/uploads/2025/07/Green-and-White-Elegant-India-Fashion-Brand-Logo-120-x-78-px-1-e1753250830504.png' },
-  smridhi:     { label: 'Smridhi Online',  logo: 'https://capybaracare.in/wp-content/uploads/2025/07/Green-and-White-Elegant-India-Fashion-Brand-Logo-120-x-78-px-1-e1753250830504.png' },
-  allsessions: { label: 'AllSessions',     logo: 'https://capybaracare.in/wp-content/uploads/2025/07/Green-and-White-Elegant-India-Fashion-Brand-Logo-120-x-78-px-1-e1753250830504.png' },
+  capybara:    { label: 'Capybara Care',   logo: 'https://www.capybaracare.in/images/capybara-logo-wide.png' },
+  smridhi:     { label: 'Smridhi Online',  logo: 'https://www.capybaracare.in/images/capybara-logo-wide.png' },
+  allsessions: { label: 'AllSessions',     logo: 'https://www.capybaracare.in/images/capybara-logo-wide.png' },
 };
 let activeProfile = 'capybara';
 let smridhiIncludeAll = false; // include Capybara sessions with Therapist=Smridhi+online
@@ -3183,7 +3183,7 @@ function openShareView() {
   const body = document.getElementById('share-body');
   body.innerHTML = `
     <div class="share-head">
-      <img src="https://capybaracare.in/wp-content/uploads/2025/07/Green-and-White-Elegant-India-Fashion-Brand-Logo-120-x-78-px-1-e1753250830504.png" alt="Capybara Care" />
+      <img src="https://www.capybaracare.in/images/capybara-logo-wide.png" alt="Capybara Care" />
       <div class="share-head-text">
         <div class="sh-name">${subtitle} · ${rows.length} session${rows.length !== 1 ? 's' : ''} · Due: ₹${rows.reduce((s,r) => s + parseNum(r['Share']), 0).toLocaleString('en-IN')}</div>
       </div>
